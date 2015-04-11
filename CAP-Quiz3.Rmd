@@ -1,0 +1,662 @@
+---
+title: "Capstone - Quiz3"
+author: "Miguel Conde"
+date: "Thursday, April 02, 2015"
+output: html_document
+---
+
+```{r echo = FALSE, warning=FALSE, message=FALSE}
+source("./R/perplex.R")
+date()
+```
+
+Prepare:
+
+```{r}
+model <- loadModelTotal()
+
+predict_init <- function() {
+  setkey(model$m.1G, WG1)
+  setkey(model$m.2G, WG1)
+  setkey(model$m.3G, WG1, WG2)
+  setkey(model$m.4G, WG1, WG2, WG3)
+}
+
+pp_init <- function() {
+  setkey(model$m.1G, WG1)
+  setkey(model$m.2G, WG1, WG2)
+  setkey(model$m.3G, WG1, WG2, WG3)
+  setkey(model$m.4G, WG1, WG2, WG3, WG4)
+}
+
+get_PPs <- function(phrase, w1, w2, w3, w4) {
+
+
+  phrase1 <- paste(phrase, w1)
+  phrase2 <- paste(phrase, w2)
+  phrase3 <- paste(phrase, w3)
+  phrase4 <- paste(phrase, w4)
+  
+  pp1 <- linePerplex4G(model, phrase1)
+  pp2 <- linePerplex4G(model, phrase2)
+  pp3 <- linePerplex4G(model, phrase3)
+  pp4 <- linePerplex4G(model, phrase4)
+  
+  res1 <- data.frame(Words = c(w1, w2, w3, w4), PPs = c(pp1, pp2, pp3, pp4))
+  
+  pp1 <- linePerplex4G_v2(model, phrase1)
+  pp2 <- linePerplex4G_v2(model, phrase2)
+  pp3 <- linePerplex4G_v2(model, phrase3)
+  pp4 <- linePerplex4G_v2(model, phrase4)
+  
+  res2 <- data.frame(Words = c(w1, w2, w3, w4), PPs_v2 = c(pp1, pp2, pp3, pp4))
+  
+  writeLines("PPs:\n")
+  print(res1[order(res1$PPs), ])
+  writeLines("\nPPs_v2:\n")
+  print(res2[order(res2$PPs_v2), ])
+}
+```
+
+Using model v7.5
+
+First with **Total model**:
+
+# Question 1
+
+When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd
+
+- die
+- eat
+- give
+- sleep
+
+Predict:
+
+```{r Q1_1, echo =FALSE}
+predict_init()
+words <- c("live", "and", "I'd") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+
+```{r Q1_2, echo = FALSE}
+pp_init()
+
+phrase <- "When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd"
+
+get_PPs(phrase, "die", "eat", "give", "sleep")
+```
+
+
+Da "give", pero la letra de la canción dice "die"...
+
+# Question 2
+
+Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his
+
+- spiritual
+- marital
+- financial
+- horticultural
+
+```{r Q2_1, echo =FALSE}
+predict_init()
+words <- c("me", "about", "his") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q2_2, echo = FALSE}
+pp_init()
+
+phrase <- "Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his"
+
+get_PPs(phrase, "spiritual", "marital", "financial", "horticultural")
+```
+
+"financial"
+
+# Question 3
+
+I'd give anything to see arctic monkeys this
+
+- morning
+- weekend
+- decade
+- month
+
+```{r Q3_1, echo =FALSE}
+predict_init()
+words <- c("arctic", "monkeys", "this") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q3_2, echo = FALSE}
+pp_init()
+
+phrase <- "I'd give anything to see arctic monkeys this"
+
+get_PPs(phrase, "morning", "weekend", "decade", "month")
+```
+
+"morning", con muy poca dferenia sobre "weekend"
+
+# Question 4
+
+Talking to your mom has the same effect as a hug and helps reduce your
+
+- sleepiness
+- hunger
+- stress
+- happiness
+
+```{r Q4_1, echo =FALSE}
+predict_init()
+words <- c("helps", "reduce", "your") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q4_2, echo = FALSE}
+pp_init()
+
+phrase <- "Talking to your mom has the same effect as a hug and helps reduce your"
+
+get_PPs(phrase, "sleepiness", "hunger", "stress", "happiness")
+```
+
+Da "happiness" pero no puede ser; seguramente es "stress"
+
+# Question 5
+
+When you were in Holland you were like 1 inch away from me but you hadn't time to take a
+
+- walk
+- minute
+- picture
+- look
+
+```{r Q5_1, echo =FALSE}
+predict_init()
+words <- c("to", "take", "a") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q5_2, echo = FALSE}
+pp_init()
+
+phrase <- "When you were in Holland you were like 1 inch away from me but you hadn't time to take a"
+
+get_PPs(phrase, "walk", "minute", "picture", "look")
+```
+
+"look" por un pelo, sobre "picture"
+
+# Question 6
+
+I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the
+
+- case
+- matter
+- account
+- incident
+
+```{r Q6_1, echo =FALSE}
+predict_init()
+words <- c("to", "settle", "the") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q6_2, echo = FALSE}
+pp_init()
+
+phrase <- "I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the"
+
+get_PPs(phrase, "case", "matter", "account", "incident")
+```
+
+"case"
+
+# Question 7
+
+I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each
+ 
+- toe
+- arm
+- hand
+- finger
+
+```{r Q7_1, echo =FALSE}
+predict_init()
+words <- c("groceries", "in", "each") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q7_2, echo = FALSE}
+pp_init()
+
+phrase <- "I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each"
+
+get_PPs(phrase, "toe", "arm", "hand", "finger")
+```
+
+Empate virtual entre "arm" y "hand"; PP da lo mismo (105.7636) para ambos, PP_v2 prefiere "hand" (268.8135 vs 269.9055)
+
+# Question 8
+
+Every inch of you is perfect from the bottom to the
+
+- center
+- side
+- middle
+- top
+
+```{r Q8_1, echo =FALSE}
+predict_init()
+words <- c("bottom", "to", "the") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+"top"
+
+```{r Q8_2, echo = FALSE}
+pp_init()
+
+phrase <- "Every inch of you is perfect from the bottom to the"
+
+get_PPs(phrase, "center", "side", "middle", "top")
+```
+
+# Question 9
+
+I’m thankful my childhood was filled with imagination and bruises from playing
+
+- weekly
+- outside
+- daily
+- inside
+
+```{r Q9_1, echo =FALSE}
+predict_init()
+words <- c("bruises", "from", "playing") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q9_2, echo = FALSE}
+pp_init()
+
+phrase <- "I’m thankful my childhood was filled with imagination and bruises from playing"
+
+get_PPs(phrase, "weekly", "outside", "daily", "inside")
+```
+
+"outside"
+
+# Question 10
+
+I like how the same people are in almost all of Adam Sandler's
+
+- stories
+- pictures
+- movies
+- novels
+
+```{r Q10_1, echo =FALSE}
+predict_init()
+words <- c("of", "Adam", "Sandler's") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q10_2, echo = FALSE}
+pp_init()
+
+phrase <- "I like how the same people are in almost all of Adam Sandler's"
+
+get_PPs(phrase, "stories", "pictures", "movies", "novels")
+```
+
+Da "stories" por los pelos sobre "movies"
+
+***
+
+Let's try now with **Twitter model**:
+
+```{r echo = FALSE}
+rm(model)
+gc()
+model <- loadModelTwitter()
+```
+
+# Question 1
+
+When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd
+
+- die
+- eat
+- give
+- sleep
+
+Predict:
+
+```{r Q1_1t, echo =FALSE}
+predict_init()
+words <- c("live", "and", "I'd") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+
+```{r Q1_2t, echo = FALSE}
+pp_init()
+
+phrase <- "When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd"
+
+get_PPs(phrase, "die", "eat", "give", "sleep")
+```
+
+
+Da "give", pero la letra de la canción dice "die"...
+
+Twitter coincide
+
+En principio, preferencia de Total: "die" - NOK
+
+Cambiamos a "die" - OK
+
+Total PP 0 - Total PP_v2 0/10 - Twitter PP 0/10 - Twitter PP_v2 0/10
+
+# Question 2
+
+Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his
+
+- spiritual
+- marital
+- financial
+- horticultural
+
+```{r Q2_1t, echo =FALSE}
+predict_init()
+words <- c("me", "about", "his") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q2_2t, echo = FALSE}
+pp_init()
+
+phrase <- "Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his"
+
+get_PPs(phrase, "spiritual", "marital", "financial", "horticultural")
+```
+
+"financial"
+
+Twitter dice "marital", empatado con "hortocultural"
+
+En principio, preferencia de Total: "financial" - NOK
+
+??????????? A ojo, "marital" parece más apropiado... - OK
+
+Total PP 0 - Total PP_v2 0/10 - Twitter PP 0.5/10 - Twitter PP_v2 0.5/10
+
+# Question 3
+
+I'd give anything to see arctic monkeys this
+
+- morning
+- weekend
+- decade
+- month
+
+```{r Q3_1t, echo =FALSE}
+predict_init()
+words <- c("arctic", "monkeys", "this") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q3_2t, echo = FALSE}
+pp_init()
+
+phrase <- "I'd give anything to see arctic monkeys this"
+
+get_PPs(phrase, "morning", "weekend", "decade", "month")
+```
+
+"morning", con muy poca diferenia sobre "weekend"
+
+Twitter dice "weekend", casi empatado con "morning"
+
+En principio, preferencia de Total: "morning" - NOK
+
+Cambiamos a "weekend" - OK
+
+Total PP 0 - Total PP_v2 0/10 - Twitter PP 1.5/10 - Twitter PP_v2 1.5/10
+
+# Question 4
+
+Talking to your mom has the same effect as a hug and helps reduce your
+
+- sleepiness
+- hunger
+- stress
+- happiness
+
+```{r Q4_1t, echo =FALSE}
+predict_init()
+words <- c("helps", "reduce", "your") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q4_2t, echo = FALSE}
+pp_init()
+
+phrase <- "Talking to your mom has the same effect as a hug and helps reduce your"
+
+get_PPs(phrase, "sleepiness", "hunger", "stress", "happiness")
+```
+
+Da "happiness" pero no puede ser; seguramente es "stress"
+
+Twitter coincide
+
+En principio, preferencia de Total: "happiness" - NOK
+
+Estaba claro: cambiamos a "stress", aunque para Total y Twitter es la 3ª - OK
+
+Total PP 0 - Total PP_v2 0/10 - Twitter PP 1.5/10 - Twitter PP_v2 1.5/10
+
+# Question 5
+
+When you were in Holland you were like 1 inch away from me but you hadn't time to take a
+
+- walk
+- minute
+- picture
+- look
+
+```{r Q5_1t, echo =FALSE}
+predict_init()
+words <- c("to", "take", "a") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q5_2t, echo = FALSE}
+pp_init()
+
+phrase <- "When you were in Holland you were like 1 inch away from me but you hadn't time to take a"
+
+get_PPs(phrase, "walk", "minute", "picture", "look")
+```
+
+"look" por un pelo, sobre "picture"
+
+Twitter coincide
+
+En principio, preferencia de Total: "look" - NOK
+
+Pues cambiaremos a "picture" - OK
+
+Total PP 0 - Total PP_v2 0/10 - Twitter PP 1.5/10 - Twitter PP_v2 1.5/10
+
+# Question 6
+
+I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the
+
+- case
+- matter
+- account
+- incident
+
+```{r Q6_1t, echo =FALSE}
+predict_init()
+words <- c("to", "settle", "the") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q6_2t, echo = FALSE}
+pp_init()
+
+phrase <- "I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the"
+
+get_PPs(phrase, "case", "matter", "account", "incident")
+```
+
+"case"
+
+Twitter coincide
+
+En principio, preferencia de Total: "case" - NOK
+
+Pues iremos a la 2ª opción de todos: "matter" - OK
+
+Total PP 0 - Total PP_v2 0/10 - Twitter PP 1.5/10 - Twitter PP_v2 1.5/10
+
+# Question 7
+
+I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each
+ 
+- toe
+- arm
+- hand
+- finger
+
+```{r Q7_1t, echo =FALSE}
+predict_init()
+words <- c("groceries", "in", "each") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q7_2t, echo = FALSE}
+pp_init()
+
+phrase <- "I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each"
+
+get_PPs(phrase, "toe", "arm", "hand", "finger")
+```
+
+Empate virtual entre "arm" y "hand"; PP da lo mismo (105.7636) para ambos, PP_v2 prefiere "hand" (268.8135 vs 269.9055)
+
+Twitter prefiere "hand" claramente
+
+En principio, preferencia de Total: como hay un empate y Twitter dice "hand": "hand" - OK
+
+Total PP 0.5/10 - Total PP_v2 1/10 - Twitter PP 3.5/10 - Twitter PP_v2 3.5/10
+
+# Question 8
+
+Every inch of you is perfect from the bottom to the
+
+- center
+- side
+- middle
+- top
+
+```{r Q8_1t, echo =FALSE}
+predict_init()
+words <- c("bottom", "to", "the") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+
+
+```{r Q8_2t, echo = FALSE}
+pp_init()
+
+phrase <- "Every inch of you is perfect from the bottom to the"
+
+get_PPs(phrase, "center", "side", "middle", "top")
+```
+
+"top"
+
+Twitter coincide
+
+En principio, preferencia de Total: "top" - OK
+
+Total PP 1.5/10 - Total PP_v2 2/10 - Twitter PP 4.5/10 - Twitter PP_v2 4.5/10
+
+# Question 9
+
+I’m thankful my childhood was filled with imagination and bruises from playing
+
+- weekly
+- outside
+- daily
+- inside
+
+```{r Q9_1t, echo =FALSE}
+predict_init()
+words <- c("bruises", "from", "playing") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q9_2t, echo = FALSE}
+pp_init()
+
+phrase <- "I’m thankful my childhood was filled with imagination and bruises from playing"
+
+get_PPs(phrase, "weekly", "outside", "daily", "inside")
+```
+
+"outside"
+
+Twitter coincide
+
+En principio, preferencia de Total: "outside" - OK
+
+Total PP 2.5/10 - Total PP_v2 3/10 - Twitter PP 5.5/10 - Twitter PP_v2 5.5/10
+
+# Question 10
+
+I like how the same people are in almost all of Adam Sandler's
+
+- stories
+- pictures
+- movies
+- novels
+
+```{r Q10_1t, echo =FALSE}
+predict_init()
+words <- c("of", "Adam", "Sandler's") 
+predictNG_v2(model, words, 20, finalSample = FALSE, fullRes=TRUE)
+```
+
+```{r Q10_2t, echo = FALSE}
+pp_init()
+
+phrase <- "I like how the same people are in almost all of Adam Sandler's"
+
+get_PPs(phrase, "stories", "pictures", "movies", "novels")
+```
+
+Da "stories" por los pelos sobre "movies"
+
+Twitter: PPs da "movies" claramente, pero PP_v2 da, por los pelos, "pictures" sobre "movies"
+
+En principio, preferencia de Total: "stories" - NOK
+
+Estaba claro, cambiamos a "movies" - OK
+
+Total PP 2.5/10 - Total PP_v2 3/10 - Twitter PP 5.5/10 - Twitter PP_v2 5.5/10
+
+```{r echo=FALSE}
+date()
+```
+

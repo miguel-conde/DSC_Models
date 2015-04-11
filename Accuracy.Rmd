@@ -1,0 +1,367 @@
+---
+title: "Accuracy"
+author: "Miguel Conde"
+date: "Saturday, April 11, 2015"
+output: html_document
+---
+
+
+In order to test the accuracy of our different models, we're going to generate a 4-gram Table Frequency List from samples of our *testing* files. We'll use the first three tokens of each 4-gram in the testing TFL as input to our models, get a prediction and check if it's the same as the fourth token in the testing TFL.
+
+```{r R code, message=FALSE}
+source("./R/predict.R")
+
+# This function makes all the work.
+modelStats <- function(loadModelFun, inTrainFile, finalSample = FALSE,
+                       interpol = FALSE, sizeSample = 100,
+                       nSamples = 10) {
+  
+  # Load train model
+  trainModel    <- loadModelFun()
+  
+  # Load test 4-gram TFL
+  testModelName <- load(inTrainFile)
+  
+  # Get model accuracy stats
+  res <- testModels (trainModel, eval(parse(text = testModelName)), 
+                     sizeSample = sizeSample, nSamples = nSamples,
+                     finalSample = finalSample, interpol = interpol) 
+  res
+}
+
+# This function samples the 4-gram test TFL several times, calculates predictions
+# and returns mean and confidence interval of the accuracy
+#
+# trainModel  -> model to test
+# testModel   -> 4-gram TFL from the testing files
+# sizeSample  -> number of 4-grams in each sample
+# nSamples    -> number of samples
+# finalSample -> use or not finalSample algorithm
+# interpol    -> use or not interpolation algorithm
+testModels <- function(trainModel, testModel, 
+                       sizeSample = 1000, nSamples = 100,
+                       finalSample = FALSE,
+                       interpol = FALSE) {
+  # Accuracy results vector
+  v_acc <- NULL
+  
+  # Iterate each sample
+  for (iter in 1:nSamples) {
+
+    # Sample 'sizeSample' 4G-grams from testModel
+    idxTestSample <- sample(dim(testModel)[1], sizeSample)
+    testSample    <- testModel[idxTestSample]
+    
+    # Predict on the sample
+        prediction <- apply(testSample, 1,
+                            function(x) {
+                              predictNG_v2(trainModel,x[1:3],
+                                           fullRes = FALSE, 
+                                           finalSample = finalSample,
+                                           interpol = interpol)[[1]]
+                              })
+    
+    # Real 4th tokens from the testing TFL
+    realResults <- testSample$WG4
+    
+    # Number of successes predicting
+    hits <- sum((prediction == realResults)*testSample$Count)
+    
+    # Calculate % and add to the results vector
+    accuracy <- hits / sum(testSample$Count)
+    v_acc <- append(v_acc, accuracy)
+  }
+  
+  # Calculate mean and confidence interval
+  t <- t.test(v_acc)
+  
+  return(t)
+}
+```
+
+And this is how we use it (first, simple backoff without interpolation):
+
+```{r calc_Acc_stats, eval = FALSE}
+## NO INTERPOLATION TESTS ####################################################
+date()
+
+sizeSample = 300
+nSamples = 30
+
+## BLOGS
+# Load train model
+trainModel <- loadModelBlogs()
+load(mT.BlogsFile)
+testModel <- tfl_Blogs_4G
+rm(tfl_Blogs_4G)
+gc()
+
+# No final sample
+system.time(
+  resBlogs <- testModels (trainModel, testModel, 
+                   sizeSample = sizeSample, nSamples = nSamples,
+                   finalSample = FALSE) 
+)
+
+resBlogs 
+
+# Final Sample
+system.time(
+  resBlogsFS <- testModels (trainModel, testModel, 
+                     sizeSample = sizeSample, nSamples = nSamples,
+                     finalSample = TRUE) 
+)
+
+resBlogsFS
+
+## NEWS
+# Load train model
+trainModel <- loadModelNews()
+load(mT.NewsFile)
+testModel <- tfl_News_4G
+rm(tfl_News_4G)
+gc()
+
+# No final sample
+system.time(
+  resNews <- testModels (trainModel, testModel, 
+                     sizeSample = sizeSample, nSamples = nSamples,
+                     finalSample = FALSE) 
+)
+
+resNews
+
+# Final Sample
+system.time(
+  resNewsFS <- testModels (trainModel, testModel, 
+                            sizeSample = sizeSample, nSamples = nSamples,
+                            finalSample = TRUE) 
+)
+
+resNewsFS
+
+## TWITTER
+# Load train model
+trainModel <- loadModelTwitter()
+load(mT.TwitterFile)
+testModel <- tfl_Twitter_4G
+rm(tfl_Twitter_4G)
+gc()
+
+# No final sample
+system.time(
+  resTwitter <- testModels (trainModel, testModel, 
+                         sizeSample = sizeSample, nSamples = nSamples,
+                         finalSample = FALSE) 
+)
+
+resTwitter
+
+# Final Sample
+system.time(
+  resTwitterFS <- testModels (trainModel, testModel, 
+                           sizeSample = sizeSample, nSamples = nSamples,
+                           finalSample = TRUE) 
+)
+
+resTwitterFS
+
+## TOTAL
+# Load train model
+trainModel <- loadModelTotal()
+load(mT.TotalFile)
+testModel <- tfl_Total_4G
+rm(tfl_Total_4G)
+gc()
+
+# No final sample
+system.time(
+  resTotal <- testModels (trainModel, testModel, 
+                            sizeSample = sizeSample, nSamples = nSamples,
+                            finalSample = FALSE) 
+)
+
+resTotal
+
+# Final Sample
+system.time(
+  resTotalFS <- testModels (trainModel, testModel, 
+                              sizeSample = sizeSample, nSamples = nSamples,
+                              finalSample = TRUE) 
+)
+
+resTotalFS
+
+tbl_res <- 
+  data.frame(Model = c("Blogs", "Blogs", "News", "News", 
+                       "Twitter", "Twitter", "Total", "Total"),
+             Final.Sample = c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE, TRUE),
+             Inf.Conf.Int = c(resBlogs$conf.int[1],   resBlogsFS$conf.int[1],
+                              resNews$conf.int[1],    resNewsFS$conf.int[1],
+                              resTwitter$conf.int[1], resTwitterFS$conf.int[1],
+                              resTotal$conf.int[1],   resTotalFS$conf.int[1]),
+             Mean = c(resBlogs$estimate,   resBlogsFS$estimate,
+                      resNews$estimate,    resNewsFS$estimate,
+                      resTwitter$estimate, resTwitterFS$estimate,
+                      resTotal$estimate,   resTotalFS$estimate), 
+             Sup.Conf.Int = c(resBlogs$conf.int[2],   resBlogsFS$conf.int[2],
+                              resNews$conf.int[2],    resNewsFS$conf.int[2],
+                              resTwitter$conf.int[2], resTwitterFS$conf.int[2],
+                              resTotal$conf.int[2],   resTotalFS$conf.int[2]))
+
+tbl_res
+
+t.test(tbl_res$Mean)
+
+t.test(tbl_res[tbl_res$Final.Sample == FALSE,]$Mean)
+
+t.test(tbl_res[tbl_res$Final.Sample == TRUE,]$Mean)
+
+plot(tbl_res[tbl_res$Final.Sample == FALSE,]$Mean, type="o", ylim = c(0.08,0.30), col = "blue")
+lines(tbl_res[tbl_res$Final.Sample == FALSE,]$Inf.Conf.Int, type="l", col = "blue")
+lines(tbl_res[tbl_res$Final.Sample == FALSE,]$Sup.Conf.Int, type="l", col = "blue")
+lines(tbl_res[tbl_res$Final.Sample == TRUE,]$Mean, type="o", col = "red")
+lines(tbl_res[tbl_res$Final.Sample == TRUE,]$Inf.Conf.Int, type="l", col = "red")
+lines(tbl_res[tbl_res$Final.Sample == TRUE,]$Sup.Conf.Int, type="l", col = "red")
+
+date()
+```
+
+These are the results for SBO without interpolation:
+
+    Model Final.Sample Inf.Conf.Int      Mean Sup.Conf.Int
+1   Blogs        FALSE   0.15538223 0.1700844    0.1847865
+2   Blogs         TRUE   0.09579991 0.1042088    0.1126176
+3    News        FALSE   0.17186188 0.1930233    0.2141848
+4    News         TRUE   0.11795891 0.1295783    0.1411977
+5 Twitter        FALSE   0.20711630 0.2417489    0.2763814
+6 Twitter         TRUE   0.16079805 0.1897276    0.2186572
+7   Total        FALSE   0.18014464 0.1935198    0.2068949
+8   Total         TRUE   0.13905019 0.1546107    0.1701713
+
+As final sample results are worse, we'll not use it to get the ststistics of SBO with interpolation:
+
+
+```{r}
+## INTERPOLATION TESTS ####################################################
+date()
+sizeSample = 300
+nSamples = 30
+
+# Make sure you have this lambdas (obtained from minimizing perplexity) as
+# variables when you're going to use the 'interpol = TRUE' option
+l_Blogs   <- c(0.01561975, 0.03848051, 0.04571407, 0.90018566)
+l_News    <- c(0.02095653, 0.05361416, 0.06220533, 0.86322398)
+l_Twitter <- c(0.05549261, 0.10944140, 0.15447238, 0.68059362)
+l_Total   <- c(0.01906878, 0.05788172, 0.06563039, 0.85741911)
+
+## BLOGS
+l <- l_Blogs
+# No final sample
+resBlogs <- modelStats(loadModelBlogs, mT.BlogsFile, finalSample = FALSE,
+                       interpol = TRUE, sizeSample = sizeSample,
+                       nSamples = nSamples)
+resBlogs 
+
+# Final Sample
+# resBlogsFS <- modelStats(loadModelBlogs, mT.BlogsFile, finalSample = TRUE,
+#                          interpol = TRUE, sizeSample = sizeSample,
+#                          nSamples = nSamples)
+# resBlogsFS
+
+## NEWS
+l <- l_News
+# No final sample
+resNews <- modelStats(loadModelNews, mT.NewsFile, finalSample = FALSE,
+                      interpol = TRUE, sizeSample = sizeSample,
+                      nSamples = nSamples)
+resNews
+
+# Final Sample
+# resNewsFS <- modelStats(loadModelNews, mT.NewsFile, finalSample = TRUE,
+#                         interpol = TRUE, sizeSample = sizeSample,
+#                         nSamples = nSamples)
+# resNewsFS
+
+## TWITTER
+l <- l_Twitter
+# No final sample
+resTwitter <- modelStats(loadModelTwitter, mT.TwitterFile, finalSample = FALSE,
+                         interpol = TRUE, sizeSample = sizeSample,
+                         nSamples = nSamples)
+resTwitter
+
+# Final Sample
+# resTwitterFS <- modelStats(loadModelTwitter, mT.TwitterFile, finalSample = TRUE,
+#                            interpol = TRUE, sizeSample = sizeSample,
+#                            nSamples = nSamples)
+# resTwitterFS
+
+## TOTAL
+l <- l_Total
+# No final sample
+resTotal <- modelStats(loadModelTotal, mT.TotalFile, finalSample = FALSE,
+                       interpol = TRUE, sizeSample = sizeSample,
+                       nSamples = nSamples)
+resTotal
+
+# Final Sample
+# resTotalFS <- modelStats(loadModelTotal, mT.TotalFile, finalSample = TRUE,
+#                          interpol = TRUE, sizeSample = sizeSample,
+#                          nSamples = nSamples)
+# resTotalFS
+
+## Gather stats
+# tbl_res_inter <- 
+#   data.frame(Model = c("Blogs", "Blogs", "News", "News", 
+#                        "Twitter", "Twitter", "Total", "Total"),
+#              Final.Sample = c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE, TRUE),
+#              Inf.Conf.Int = c(resBlogs$conf.int[1],   resBlogsFS$conf.int[1],
+#                               resNews$conf.int[1],    resNewsFS$conf.int[1],
+#                               resTwitter$conf.int[1], resTwitterFS$conf.int[1],
+#                               resTotal$conf.int[1],   resTotalFS$conf.int[1]),
+#              Mean = c(resBlogs$estimate,   resBlogsFS$estimate,
+#                       resNews$estimate,    resNewsFS$estimate,
+#                       resTwitter$estimate, resTwitterFS$estimate,
+#                       resTotal$estimate,   resTotalFS$estimate), 
+#              Sup.Conf.Int = c(resBlogs$conf.int[2],   resBlogsFS$conf.int[2],
+#                               resNews$conf.int[2],    resNewsFS$conf.int[2],
+#                               resTwitter$conf.int[2], resTwitterFS$conf.int[2],
+#                               resTotal$conf.int[2],   resTotalFS$conf.int[2]))
+
+tbl_res_inter <- 
+  data.frame(Model = c("Blogs", "Blogs", "News", "News", 
+                       "Twitter", "Twitter", "Total", "Total"),
+             Final.Sample = c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE, TRUE),
+             Inf.Conf.Int = c(resBlogs$conf.int[1],   resNews$conf.int[1],
+                              resTwitter$conf.int[1], resTotal$conf.int[1]),
+             Mean = c(resBlogs$estimate,   resNews$estimate,   
+                      resTwitter$estimate, resTotal$estimate), 
+             Sup.Conf.Int = c(resBlogs$conf.int[2],   resNews$conf.int[2],    
+                              resTwitter$conf.int[2], resTotal$conf.int[2])
+
+tbl_res_inter
+
+## Some exploration
+
+t.test(tbl_res_inter$Mean)
+
+t.test(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Mean)
+
+t.test(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Mean)
+
+plot(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Mean, type="o", ylim = c(0.08,0.30), col = "blue")
+lines(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Inf.Conf.Int, type="l", col = "blue")
+lines(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Sup.Conf.Int, type="l", col = "blue")
+lines(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Mean, type="o", col = "red")
+lines(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Inf.Conf.Int, type="l", col = "red")
+lines(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Sup.Conf.Int, type="l", col = "red")
+
+date()
+
+
+```
+
+These are the results for SBO with interpolation:
+
+
