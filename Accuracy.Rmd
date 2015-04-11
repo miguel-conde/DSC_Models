@@ -9,6 +9,8 @@ output: html_document
 In order to test the accuracy of our different models, we're going to generate a 4-gram Table Frequency List from samples of our *testing* files. We'll use the first three tokens of each 4-gram in the testing TFL as input to our models, get a prediction and check if it's the same as the fourth token in the testing TFL.
 
 ```{r R code, message=FALSE}
+source("./R/makeTFLs.R")
+source("./R/testingModels.R")
 source("./R/predict.R")
 
 # This function makes all the work.
@@ -229,6 +231,7 @@ date()
 
 These are the results for SBO without interpolation:
 
+```
     Model Final.Sample Inf.Conf.Int      Mean Sup.Conf.Int
 1   Blogs        FALSE   0.15538223 0.1700844    0.1847865
 2   Blogs         TRUE   0.09579991 0.1042088    0.1126176
@@ -238,11 +241,12 @@ These are the results for SBO without interpolation:
 6 Twitter         TRUE   0.16079805 0.1897276    0.2186572
 7   Total        FALSE   0.18014464 0.1935198    0.2068949
 8   Total         TRUE   0.13905019 0.1546107    0.1701713
+```
 
 As final sample results are worse, we'll not use it to get the ststistics of SBO with interpolation:
 
 
-```{r}
+```{r eval=FALSE}
 ## INTERPOLATION TESTS ####################################################
 date()
 sizeSample = 300
