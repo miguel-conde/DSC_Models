@@ -368,4 +368,54 @@ date()
 
 These are the results for SBO with interpolation:
 
+```
+    Model Final.Sample Inf.Conf.Int      Mean Sup.Conf.Int
+1   Blogs        FALSE    0.1670763 0.1765033    0.1859303
+2    News        FALSE    0.1761051 0.1962604    0.2164157
+3 Twitter        FALSE    0.2287575 0.2615932    0.2944289
+4   Total        FALSE    0.1994341 0.2239056    0.2483770
+```
+
+Let's compare results with and witout interpolation:
+
+```{r echo=FALSE, fig.align='center'}
+final_results <- data.frame(Model = c("Blogs", "Blogs", "News", "News", 
+                                     "Twitter", "Twitter", "Total", "Total"),
+             Interpol = c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE, TRUE),
+             Inf.Conf.Int = c(0.15538223, 0.1670763, 0.17186188, 0.1761051, 
+                              0.20711630, 0.2287575, 0.18014464, 0.1994341),
+             Mean = c(0.1700844, 0.1765033, 0.1930233, 0.1962604, 
+                      0.2417489, 0.2615932, 0.1935198, 0.2239056), 
+             Sup.Conf.Int = c(0.1847865, 0.1859303, 0.2141848, 0.2164157,
+                              0.2763814, 0.2944289, 0.2068949, 0.2483770))
+
+final_results_no_inter <- 
+  as.data.frame(t(as.matrix(final_results)), 
+                stringsAsFactors = FALSE)[3:5,c(1,3,5,7)]
+names(final_results_no_inter) <- c("Blogs", "News", "Twitter", "Total")
+
+final_results_inter <- 
+  as.data.frame(t(as.matrix(final_results)), 
+                stringsAsFactors = FALSE)[3:5,c(2,4,6,8)]
+names(final_results_inter) <- c("Blogs", "News", "Twitter", "Total")
+
+plot(t(final_results_inter["Mean",]), type="o", col = "blue", xaxt="n", xlab="",ylab="Accuracy", ylim = c(0.12, 0.30))
+lines(t(final_results_inter["Inf.Conf.Int",]), type="l", col = "blue", lty=3)
+lines(t(final_results_inter["Sup.Conf.Int",]), type="l", col = "blue", lty=3)
+lines(t(final_results_no_inter["Mean",]), type="o", col = "red")
+lines(t(final_results_no_inter["Inf.Conf.Int",]), type="l", col = "red", lty=3)
+lines(t(final_results_no_inter["Sup.Conf.Int",]), type="l", col = "red", lty=3)
+axis(side=1, at=c(1,2,3,4), labels=names(final_results_inter))
+legend("bottomright", 
+    c("Interpolation","No interpolation"), lty = c(1,1), col = c("blue", "red"), horiz=FALSE)
+
+improvement <- 
+  100*(final_results[c(2,4,6,8),"Mean"] - final_results[c(1,3,5,7), "Mean"])/final_results[c(1,3,5,7), "Mean"]
+
+plot(improvement, type="o", col = "blue", xaxt="n", xlab="",ylab="% Accuracy Improvement")
+axis(side=1, at=c(1,2,3,4), labels=names(final_results_inter))
+text(c(1,2,3,4), improvement, format(improvement, digits=3), improvement, cex=0.8, pos=c(3,4,2,2), col="blue")
+
+```
+
 
