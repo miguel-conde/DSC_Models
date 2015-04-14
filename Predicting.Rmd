@@ -1,0 +1,444 @@
+---
+title: "Predicting"
+author: "Miguel Conde"
+date: "Tuesday, April 14, 2015"
+output: html_document
+---
+
+In this document the R code to implement a Back Off (with and without 
+interpolation) prediction algorithm is described.
+
+Suppose our input words are `<WG1>, <WG2>, <WG3>`
+
+We begin searching th 4-grams TFL. If some trigrams `<WG1>, <WG2>, <WG3>, <W>` are found, we order them by frequency to return the results `<W>`. If several terms share the greatest probability, we sample.
+
+If we don't find any trigram in the 4-gram TFL, we back off to the 3-gram TFL and search for bigrams `<WG2>, <WG3>, <W>`.
+
+And so on until reaching the 1-gram TFL.
+
+When we use interpolation, the process is the same but don'y use the frequencies directly, but calculate a "probaility" as a linear combination of probabilities.
+
+For example, if we find a trigram in the 4-gram TFL:
+
+$$
+P(W) = \lambda_4 \times F_4(W|WG1,WG2,WG3) + \lambda_3 \times F_3(W|WG2,WG3) + \lambda_2 \times F_2(W|WG3) + \lambda_1 \times F_1(W)
+$$
+
+Where, for instance, $F_3(W|WG2,WG3)$ is the frequency of `<W>` once `<WG2>,<WG3>` has appeared.
+
+
+```{r predictNG_v2, message=FALSE}
+library(data.table)
+source("./R/dfNames.R")
+
+#'
+#' @name FUNCTION predictNG_v2()
+#' 
+#' @description This function takes one of the models - Blogs, News, Twitter, 
+# ' Total - and a set of tokens and predicts the next word.
+#' 
+#' @param model list; object that contains the model to use: m.Blogs, m.News,
+#' m.Twitter, m.Total
+#' @param words strings vector; contains the tokens to take as input to 
+#' prediction
+#' @param finalSample logical; if TRUE, returns a sample of words based on 
+#' probability weights
+#' @param Npredictions integer; number of word to predict
+#' @param fullRes logical; if TRUE, complete lines in TDM are returned; else, 
+#' only the predicted words are returned
+#' @param interpol logical; use or not interpolation algorithm. If set as TRUE,
+#' A GLOBAL VARIABLE `l` must be set as a numeric vector with the weigths to use
+#' when interpolating
+#' 
+#' @return a two elements list:
+#'                            - Main prediction
+#'                            - All predictions
+#' 
+#' @include library(data.table)
+#' @usage the model must be loaded before using.
+#' @example m.BlogsFile <- file.path(trainingBlogsModelDirectory, "m.Blogs.RData")
+#' load(m.BlogsFile)
+#' predictNG(m.Blogs, c("thank", "you", "very"), NPredictions = 5, 
+#' finalSample = TRUE)
+#' 
+predictNG_v2 <- function(model, words, NPredictions = 5, 
+                       finalSample = FALSE, fullRes = TRUE, interpol = FALSE) {
+
+  nWords <- length(words)
+  
+  # Select the TFL in which we must search
+  if (nWords >= 3)
+    prediction <- predictNG4(model, words, interpol) 
+  else if (nWords == 2)
+    prediction <- predictNG3(model, words, interpol)
+  else if (nWords == 1)
+    prediction <- predictNG2(model, words, interpol)    
+  
+  if (finalSample == FALSE) 
+  {
+    mostFreq <- which(prediction$logProb == max(prediction$logProb))
+    ## At least 2 words have the same probability: sample 1 among them and return 
+    ## it
+    if (length(mostFreq) > 1) {
+      idx_max_prediction <- sample(1:length(mostFreq), size = 1,
+                                   prob = rep(1/length(mostFreq),
+                                              length(mostFreq)))
+      #print(idx_max_prediction)
+      max_prediction <- prediction[mostFreq[idx_max_prediction],]
+    } else
+      ## ELSE: return the most frequent word
+      max_prediction <- prediction[1,]
+    
+  } else ## finalSample == TRUE: sample all words (weighted) and return 1
+  {
+    idx_max_prediction <- sample(1:dim(prediction)[1], size = 1, 
+                                 prob = prediction$Freq )
+    max_prediction <- prediction[idx_max_prediction,]
+  }
+  
+  
+  if (fullRes == TRUE) # Return full results
+    return(list(max_prediction, 
+                prediction[1:min(dim(prediction)[1], NPredictions), ]))
+  
+  # Return only terms
+  colPred <- grep("WG[1234]", names(prediction), value=T)
+  colPred <- length(colPred)
+  return(list(as.vector(as.matrix(max_prediction[colPred])), 
+              as.vector(prediction[1:min(dim(prediction)[1], 
+                                         NPredictions), colPred])))
+}
+```
+
+
+```{r predictNGN}
+predictNG4 <- function(model, words, interpol = FALSE) {
+  nWords <- length(words)
+  
+  if (nWords < 3)
+    stop("predictNG4: Number of words must be at least 3")
+  if (nWords > 3)
+    tokens <- words[(nWords - 3 + 1):nWords]
+  else
+    tokens <- words
+  
+  # Search the 4-Gram table 
+  setkey(model[["m.4G"]], "WG1", "WG2", "WG3")
+  
+  prediction <- as.data.frame(model[["m.4G"]][as.list(tokens), ])
+  
+  if (!is.na(prediction$WG4[1])) # found 4-gram
+  {
+    if (interpol == TRUE) prediction <- interpol4G(prediction, model,l = l)
+    
+    # Order by frequency
+    prediction <- prediction[order(prediction$logProb, decreasing = TRUE),]
+  } else # search in 3-grams
+  { 
+    prediction <- predictNG3(model, words, interpol)
+  }
+  return(prediction)
+}
+
+predictNG3 <- function(model, words, interpol = FALSE) {
+  nWords <- length(words)
+  
+  if (nWords < 2)
+    stop("predictNG3: Number of words must be at least 2")
+  if (nWords > 2)
+    tokens <- words[(nWords - 2 + 1):nWords]
+  else
+    tokens <- words
+  
+  # Search the 3-Gram table 
+  setkey(model[["m.3G"]], "WG1", "WG2")
+  
+  prediction <- as.data.frame(model[["m.3G"]][as.list(tokens), ])
+  
+  if (!is.na(prediction$WG3[1])) # found 3-gram
+  {
+    if (interpol == TRUE) prediction <- interpol3G(prediction, model,l = l)
+    
+    # Order by frequency
+    prediction <- prediction[order(prediction$logProb, decreasing = TRUE),]
+  } else # search in 2-grams
+  { 
+    prediction <- predictNG2(model, words, interpol)
+  }
+  return(prediction)
+}
+
+predictNG2 <- function(model, words, interpol = FALSE) {
+  nWords <- length(words)
+  
+  if (nWords < 1)
+    stop("predictNG2: Number of words must be at least 1")
+  if (nWords > 1)
+    tokens <- words[(nWords - 1 + 1):nWords]
+  else
+    tokens <- words
+  
+  # Search the 2-Gram table 
+  setkey(model[["m.2G"]], "WG1")
+  
+  prediction <- as.data.frame(model[["m.2G"]][as.list(tokens), ])
+  
+  if (!is.na(prediction$WG2[1])) # found 2-gram
+  {
+    if (interpol == TRUE) prediction <- interpol2G(prediction, model,l = l)
+    
+    # Order by frequency
+    prediction <- prediction[order(prediction$logProb, decreasing = TRUE),]
+  } else # search in 1-grams
+  { 
+    prediction <- predictNG1(model, interpol)
+  }
+  return(prediction)
+}
+
+predictNG1 <- function(model, interpol = FALSE) {
+  
+  # Search the 1-Gram table (weigth-sample 1 term randomly)
+  p_weights <-  model[["m.1G"]][ , Freq]
+  prediction <- sample(1:dim(model[["m.1G"]])[1], size = 50, prob = p_weights)
+  prediction <- model[["m.1G"]][prediction]
+  
+  if (interpol == TRUE) prediction <- interpol1G(prediction, model,l = l)
+  
+  # Order by frequency
+  prediction <- prediction[order(prediction$logProb, decreasing=TRUE), ]
+  
+  return(as.data.frame(prediction))
+}
+```
+
+
+```{r interpolNG}
+interpol4G <- function(pred, model, l) {
+
+  setkey(model[["m.3G"]], WG1, WG2, WG3)
+  setkey(model[["m.2G"]], WG1, WG2)
+  setkey(model[["m.1G"]], WG1)
+  
+  p <- matrix(c(model[["m.1G"]][.(pred$WG4)]$Freq,
+                model[["m.2G"]][.(pred$WG3, pred$WG4)]$Freq,
+                model[["m.3G"]][.(pred$WG2, pred$WG3, pred$WG4)]$Freq,
+                pred$Freq), ncol = 4)
+  
+  p[is.na(p)] <- 0
+  
+  pred$Freq <- p %*% l
+  pred$Freq <- pred$Freq / sum(pred$Freq)
+  pred$logProb <- log2(pred$Freq)
+  
+  pred
+}
+
+interpol3G <- function(pred, model, l) {
+
+  setkey(model[["m.2G"]], WG1, WG2)
+  setkey(model[["m.1G"]], WG1)
+  
+  p <- matrix(c(model[["m.1G"]][.(pred$WG3)]$Freq,
+                model[["m.2G"]][.(pred$WG2, pred$WG3)]$Freq,
+                pred$Freq), ncol = 3)
+  
+  p[is.na(p)] <- 0
+  
+  pred$Freq <- p %*% l[1:3]
+  pred$Freq <- pred$Freq / sum(pred$Freq)
+  pred$logProb <- log2(pred$Freq)
+  
+  pred
+}
+
+interpol2G <- function(pred, model, l) {
+
+  setkey(model[["m.1G"]], WG1)
+  
+  p <- matrix(c(model[["m.1G"]][.(pred$WG2)]$Freq,
+                pred$Freq), ncol = 2)
+  
+  p[is.na(p)] <- 0
+  
+  pred$Freq <- p %*% l[1:2]
+  pred$Freq <- pred$Freq / sum(pred$Freq)
+  pred$logProb <- log2(pred$Freq)
+  
+  pred
+}
+
+interpol1G <- function(pred, model, l) {
+  
+  p <- matrix(pred$Freq, ncol = 1)
+  
+  p[is.na(p)] <- 0
+  
+  pred$Freq <- p %*% l[1]
+  pred$Freq <- pred$Freq / sum(pred$Freq)
+  pred$logProb <- log2(pred$Freq)
+  
+  pred
+}
+```
+
+## Examples of use
+
+```{r ex_1}
+model <- loadModelBlogs()
+
+setkey(model[["m.1G"]], WG1)
+setkey(model[["m.2G"]], WG1)
+setkey(model[["m.3G"]], WG1,WG2)
+setkey(model[["m.4G"]], WG1,WG2,WG3)
+
+words <- c("<stx>", "<stx>", "the")
+phrase <- paste(words[1], words[2], words[3])
+
+set.seed(1234)
+for (i in 1:1000) {
+  w <- predictNG_v2(model, words, 1, finalSample = TRUE, fullRes=FALSE)[[1]]
+  words[1] <- words[2]
+  words[2] <- words[1]
+  words[3] <- w
+  phrase <- paste(phrase,w)
+  if (w == "<etx>") break
+}
+phrase
+```
+
+```{r ex_2}
+model <- loadModelTwitter()
+
+setkey(model[["m.1G"]], WG1)
+setkey(model[["m.2G"]], WG1)
+setkey(model[["m.3G"]], WG1,WG2)
+setkey(model[["m.4G"]], WG1,WG2,WG3)
+
+words <- c("i", "wish", "you")
+phrase <- paste(words[1], words[2], words[3])
+
+set.seed(4321)
+for (i in 1:1000) {
+  w <- predictNG_v2(model, words, 1, finalSample = FALSE, 
+                    fullRes=FALSE, interpol = FALSE)[[1]]
+  words[1] <- words[2]
+  words[2] <- words[1]
+  words[3] <- w
+  phrase <- paste(phrase,w)
+  if (w == "<etx>") break
+}
+phrase
+```
+
+
+```{r ex_3}
+words <- c("i", "am", "a")
+
+set.seed(1324)
+predictNG_v2(model, words, NPredictions = 20, finalSample = FALSE, 
+                    fullRes=FALSE, interpol = TRUE)[[2]]
+```
+
+```{r ex_4}
+words <- c("i", "am", "a")
+
+set.seed(2413)
+predictNG_v2(model, words, NPredictions = 20, finalSample = FALSE, 
+                    fullRes=TRUE, interpol = TRUE)[[2]]
+```
+
+
+Functions used:
+
+```{r aux_fun_1}
+
+loadModelBlogs <- function() {
+  
+  # Load model 4G
+  load(m.BlogsFile)
+  
+  ## Create TFLs for 1,2 ang 3-grams
+  ## Add frequency and logprob columns
+  tfl_Blogs_4G <- addProbs4G(tfl_Blogs_4G)
+  tfl_Blogs_3G <- getTFL3G(tfl_Blogs_4G)
+  tfl_Blogs_2G <- getTFL2G(tfl_Blogs_4G)
+  tfl_Blogs_1G <- getTFL1G(tfl_Blogs_4G)
+
+  m.Blogs   <- list(m.1G = tfl_Blogs_1G, m.2G = tfl_Blogs_2G,
+                    m.3G = tfl_Blogs_3G, m.4G = tfl_Blogs_4G)
+  return(m.Blogs)
+  
+}
+
+loadModelNews <- function() {
+  
+  # Load model 4G
+  load(m.NewsFile)
+  
+  ## Create TFLs for 1,2 ang 3-grams
+  ## Add frequency and logprob columns
+  tfl_News_4G <- addProbs4G(tfl_News_4G)
+  tfl_News_3G <- getTFL3G(tfl_News_4G)
+  tfl_News_2G <- getTFL2G(tfl_News_4G)
+  tfl_News_1G <- getTFL1G(tfl_News_4G)
+  
+  m.News   <- list(m.1G = tfl_News_1G, m.2G = tfl_News_2G,
+                   m.3G = tfl_News_3G, m.4G = tfl_News_4G)
+  return(m.News)
+  
+}
+
+loadModelTwitter <- function() {
+  
+  # Load model 4G
+  load(m.TwitterFile)
+  
+  ## Create TFLs for 1,2 ang 3-grams
+  ## Add frequency and logprob columns
+  tfl_Twitter_4G <- addProbs4G(tfl_Twitter_4G)
+  tfl_Twitter_3G <- getTFL3G(tfl_Twitter_4G)
+  tfl_Twitter_2G <- getTFL2G(tfl_Twitter_4G)
+  tfl_Twitter_1G <- getTFL1G(tfl_Twitter_4G)
+  
+  m.Twitter   <- list(m.1G = tfl_Twitter_1G, m.2G = tfl_Twitter_2G,
+                      m.3G = tfl_Twitter_3G, m.4G = tfl_Twitter_4G)
+  return(m.Twitter)
+  
+}
+
+loadModelTotal <- function() {
+  
+  # Load model 4G
+  load(m.TotalFile)
+  
+  ## Create TFLs for 1,2 ang 3-grams
+  ## Add frequency and logprob columns
+  tfl_Total_4G <- addProbs4G(tfl_Total_4G)
+  tfl_Total_3G <- getTFL3G(tfl_Total_4G)
+  tfl_Total_2G <- getTFL2G(tfl_Total_4G)
+  tfl_Total_1G <- getTFL1G(tfl_Total_4G)
+  
+  m.Total   <- list(m.1G = tfl_Total_1G, m.2G = tfl_Total_2G,
+                    m.3G = tfl_Total_3G, m.4G = tfl_Total_4G)
+  return(m.Total)
+  
+}
+
+```
+
+makeTFLs.R:
+```{r aux_fun_2}
+getTFL3G <- function(tfl_4G){
+  return(addProbs3G(makeTFL3G(tfl_4G)))
+}
+
+getTFL2G <- function(tfl_4G){
+  return(addProbs2G(makeTFL2G(tfl_4G)))
+}
+
+getTFL1G <- function(tfl_4G){
+  return(addProbs1G(makeTFL1G(tfl_4G)))
+}
+```
+

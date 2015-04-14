@@ -85,20 +85,25 @@ loadModelTotal <- function() {
 }
 
 #'
-#' @name FUNCTION predictNG()
+#' @name FUNCTION predictNG_v2()
 #' 
-#' @description This function takes one of the models - Blogs, News, Twitter - Total - and a
-#' set of tokens and predicts the next word.
+#' @description This function takes one of the models - Blogs, News, Twitter, 
+# ' Total - and a set of tokens and predicts the next word.
 #' 
 #' @param model list; object that contains the model to use: m.Blogs, m.News,
 #' m.Twitter, m.Total
-#' @param words strings vector; contains the 3 tokens to take as input to 
+#' @param words strings vector; contains the tokens to take as input to 
 #' prediction
-#' @finalSample logical; if TRUE, returns a sample of words based on probability
-#' weights
-#' @Npredictions integer; number of word to predict
+#' @param finalSample logical; if TRUE, returns a sample of words based on 
+#' probability weights
+#' @param Npredictions integer; number of word to predict
+#' @param fullRes logical; if TRUE, complete lines in TDM are returned; else, 
+#' only the predicted words are returned
+#' @param interpol logical; use or not interpolation algorithm
 #' 
-#' @return
+#' @return a two elements list:
+#'                            - Main prediction
+#'                            - All predictions
 #' 
 #' @include library(data.table
 #' @usage the model must be loaded before using.
@@ -106,6 +111,7 @@ loadModelTotal <- function() {
 #' load(m.BlogsFile)
 #' predictNG(m.Blogs, c("thank", "you", "very"), NPredictions = 5, 
 #' finalSample = TRUE)
+#' 
 
 # predictNG <- function(model, words, NPredictions = 5, 
 #                       finalSample = FALSE, fullRes = TRUE) {
@@ -247,6 +253,7 @@ predictNG4 <- function(model, words, interpol = FALSE) {
   {
     if (interpol == TRUE) prediction <- interpol4G(prediction, model,l = l)
     
+    # Order by frequency
     prediction <- prediction[order(prediction$logProb, decreasing = TRUE),]
   } else # search in 3-grams
   { 
@@ -274,6 +281,7 @@ predictNG3 <- function(model, words, interpol = FALSE) {
   {
     if (interpol == TRUE) prediction <- interpol3G(prediction, model,l = l)
     
+    # Order by frequency
     prediction <- prediction[order(prediction$logProb, decreasing = TRUE),]
   } else # search in 2-grams
   { 
@@ -301,6 +309,7 @@ predictNG2 <- function(model, words, interpol = FALSE) {
   {
     if (interpol == TRUE) prediction <- interpol2G(prediction, model,l = l)
     
+    # Order by frequency
     prediction <- prediction[order(prediction$logProb, decreasing = TRUE),]
   } else # search in 1-grams
   { 
@@ -310,12 +319,17 @@ predictNG2 <- function(model, words, interpol = FALSE) {
 }
 
 predictNG1 <- function(model, interpol = FALSE) {
-  # Search the 1-Gram table 
+  
+  # Search the 1-Gram table (weigth-sample 1 term randomly)
   p_weights <-  model[["m.1G"]][ , Freq]
   prediction <- sample(1:dim(model[["m.1G"]])[1], size = 50, prob = p_weights)
   prediction <- model[["m.1G"]][prediction]
+  
   if (interpol == TRUE) prediction <- interpol1G(prediction, model,l = l)
+  
+  # Order by frequency
   prediction <- prediction[order(prediction$logProb, decreasing=TRUE), ]
+  
   return(as.data.frame(prediction))
 }
 
@@ -324,6 +338,7 @@ predictNG_v2 <- function(model, words, NPredictions = 5,
 
   nWords <- length(words)
   
+  # Select the TFL in which we must search
   if (nWords >= 3)
     prediction <- predictNG4(model, words, interpol) 
   else if (nWords == 2)
@@ -352,9 +367,13 @@ predictNG_v2 <- function(model, words, NPredictions = 5,
                                  prob = prediction$Freq )
     max_prediction <- prediction[idx_max_prediction,]
   }
-  if (fullRes == TRUE)
+  
+  
+  if (fullRes == TRUE) # Return full results
     return(list(max_prediction, 
                 prediction[1:min(dim(prediction)[1], NPredictions), ]))
+  
+  # Return only terms
   colPred <- grep("WG[1234]", names(prediction), value=T)
   colPred <- length(colPred)
   return(list(as.vector(as.matrix(max_prediction[colPred])), 
