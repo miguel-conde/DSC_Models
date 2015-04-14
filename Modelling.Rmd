@@ -1,0 +1,877 @@
+---
+title: "Modelling"
+author: "Miguel Conde"
+date: "Tuesday, April 14, 2015"
+output: html_document
+---
+
+In this document the process of creating models is explained and the R code is provided.
+
+The aim is to get 4 models (Blogs, News, Twitter and Global), as 1 2, 3 and 
+4-grams Term Frequency Lists with probs and logprobs to use later with back off 
+prediction algorithms and calculate perplexities.
+
+The process is as follows:
+
+1. Make training and testing sets
+2. Sample training files
+3. Create Corpus and TDM for 1Grams
+4. Extract 95% coverage OOV dictionaries
+5. Create and save 4-GRAMS TDM
+6. Build 4G TFLs for each model
+7. Reemplace OOV words by <unk>
+8. SAVE MODELS
+9. Create TFLs for 1,2 ang 3-grams
+10. Add frequency and logprob columns
+
+
+```{r eval=FALSE}
+#' 
+#' SCRIPT trainModel.R
+#' 
+#' This script is used to obtain four models (Blogs, News, Twitter and Total)
+#' sampling the training sets. 
+#' 
+#' Each model is just a 4-gram Term Frequency List (TFL, each row containing
+#' a term and its counts). From these models we can quickly obtain later 
+#' 1, 2 and 3-grams TFLs, and add frquency and log frequency columns. 
+#' In this way we save a lot of space (thinking in uploading models to Shiny)
+#' 
+
+source("./R/dfNames.R")
+source("./R/makeTTSets.R")
+source("./R/sampleFiles.R")
+source("./R/managePunct.R") 
+source("./R/statsNWordGrams.R")
+source("./R/makeTFLs.R")
+library(tm)
+library(RWeka)
+library(data.table)
+
+## Function to create, if necessary, the directories to use
+create_dir <- function(newDir)
+if (!file.exists(newDir)) {
+  dir.create(newDir)
+}
+
+
+## 1 - Make training and testing sets ######################################
+
+print(sprintf("%s - 1 - Make training and testing sets - ", date()))
+
+create_dir(setsDirectory)
+create_dir(trainDirectory)
+create_dir(testDirectory)
+
+# 80 % for teining sets, 20% for testing sets
+makeTTSets(blogsFile,   blogsTrainingFile,   blogsTestingFile,   p = 0.8)
+makeTTSets(newsFile,    newsTrainingFile,    newsTestingFile,    p = 0.8)
+makeTTSets(twitterFile, twitterTrainingFile, twitterTestingFile, p = 0.8)
+
+print(sprintf("%s - 1 - Make training and testing sets - END ", date()))
+
+## 2 - Sample files 1-G ####################################################
+
+print(sprintf("%s - 2 - Sample files 1-G - ", date()))
+
+create_dir(modelDirectory)
+create_dir(samplesDirectory)
+create_dir(samplesTrainDirectory)
+create_dir(samplesTestDirectory)
+
+# % of lines to sample in each training file
+
+p_blogs   <- 5*1.4/100
+p_news    <- 5*1.5/100
+p_twitter <- 5*1.7/100
+
+# Get sampled files for training files
+sampleFiles(blogsTrainingFile,   blogsSampleTrainFile_1G,   p = p_blogs)
+sampleFiles(newsTrainingFile,    newsSampleTrainFile_1G,    p = p_news)
+sampleFiles(twitterTrainingFile, twitterSampleTrainFile_1G, p = p_twitter)
+
+print(sprintf("%s - 2 - Sample files 1-G - END", date()))
+
+## 3 - Corpus and TDM for 1G ###############################################
+
+# Now we'll build a unigram Term-Document MAtrix (TDM) from our three sampled
+# files (Corpus)
+
+print(sprintf("%s - 3 - Corpus and TDM for 1G", date()))
+
+create_dir(corpusTDMsDirectory)
+create_dir(trainingCorpusTDMsDirectory)
+
+# To manage punctuation
+goodPunct <- content_transformer(function(x) managePunct(x))
+
+# Tokenizer for 1-WordGrams
+makeNWordgrams <- function (x, N = 3) 
+  NGramTokenizer(x, Weka_control(min = N, max = N,
+                                 delimiters = ' \r\n\t"'))
+make1Wordgrams <- function(x) makeNWordgrams(x, 1)
+
+# Create first 1gram Corpus
+(train_en_US_1Ga <- VCorpus(DirSource(samplesTrainDirectory, encoding = "UTF-8"),
+                  readerControl = list(language = "en")))
+
+# Process punctuation
+train_en_US_1Ga <- tm_map(train_en_US_1Ga, goodPunct)
+
+# Save corpus
+save(train_en_US_1Ga, file = trainCorpusFile_1Ga)
+
+## Create and save 1-GRAMS TDM
+ctrl1G <- list(
+  content_transformer(tolower),
+  stripWhitespace = TRUE,
+  stemming = FALSE,
+  wordLengths = c(1, Inf),
+  tokenizer = make1Wordgrams)
+
+train_tdm_1Ga <- TermDocumentMatrix(train_en_US_1Ga, control = ctrl1G)
+
+save(train_tdm_1Ga, file = trainTdmFile_1Ga)
+
+print(sprintf("%s - 3 - Corpus and TDM for 1G - END", date()))
+
+## 4 - Extract 95% coverage OOV dictionaries ##################################
+
+print(sprintf("%s - 4 -  Extract OOV dictionaries", date()))
+
+## Here we decide which terms we're going to consider as Out Of Vocabulary 
+# (OOV).
+# We'll keep the most frequent terms, i.e., those necessary to cover 95% of the
+# tokens in Corpus. We'll save OOV words into dictionaries, to further 
+# substitute them by "<unk>".
+
+
+## BLOGS
+res <- calcCoverage(train_tdm_1Ga, 1)
+OOVdictionaryBlogs_1Ga <- res$listTerms$OOVTerms
+
+## NEWS
+res <- calcCoverage(train_tdm_1Ga, 2)
+OOVdictionaryNews_1Ga <- res$listTerms$OOVTerms
+
+## TWITTER
+res <- calcCoverage(train_tdm_1Ga, 3)
+OOVdictionaryTwitter_1Ga <- res$listTerms$OOVTerms
+
+## TOTAL
+res <- calcCoverage(train_tdm_1Ga, 4)
+OOVdictionaryTotal_1Ga <- res$listTerms$OOVTerms
+
+rm(res)
+
+print(sprintf("%s - 4 - Extract OOV dictionaries - END", date()))
+
+## 5 - Create and save 4-GRAMS TDM ###########################################
+
+## In this section we build 4-grams TDMs for corpus
+
+print(sprintf("%s - 5 - Create and save N-GRAMS TDMs", date()))
+
+# 4- gram tokenizer
+make4Wordgrams <- function(x) makeNWordgrams(x, 4)
+
+# 4-GRAMS
+ctrl <- list(
+  #content_transformer(tolower),
+  stripWhitespace = TRUE,
+  stemming = FALSE,
+  wordLengths = c(1, Inf),
+  tokenizer = make4Wordgrams)
+
+## Necessary to normalize 4-grams identification. This function adds seudo-words
+# at the beginning and the end of each line in Corpus.
+addLimits <- content_transformer(function(x) {
+  paste0("<STX> <STX> <STX> ", grep("^.*$", x, value = TRUE), 
+         " <ETX> <ETX> <ETX>")
+})
+
+corpus_en_US_train_4G <- tm_map(train_en_US_1Ga, addLimits)
+
+# Calc 4-gram TDM and save it.
+tdm_train_4G <- TermDocumentMatrix(corpus_en_US_train_4G, control = ctrl)
+
+save(tdm_train_4G, file = tdm_trainFile_4G)
+
+print(sprintf("%s - 5 - Create and save 4-GRAMS TDM - END", date()))
+
+## 6 - Build TFLs #############################################################
+
+# Here we separate the 4-gram TDM into four Term Frequency Lists (TFLs), 
+# implemented as datatables.
+
+print(sprintf("%s - 6 - Build TFLs", date()))
+
+create_dir(modelsDirectory)
+create_dir(trainingModelsDirectory)
+create_dir(trainingBlogsModelDirectory)
+create_dir(trainingNewsModelDirectory)
+create_dir(trainingTwitterModelDirectory)
+create_dir(trainingTotalModelDirectory)
+
+# BLOGS
+
+tfl_Blogs_4G <- makeTFL(as.matrix(tdm_train_4G), N = 4, numDoc = 1, 
+                        counts = TRUE, log = FALSE)
+
+save(tfl_Blogs_4G, file = trainingBlogsModelFile_4G)
+
+# NEWS
+
+tfl_News_4G <- makeTFL(as.matrix(tdm_train_4G), N = 4, numDoc = 2, 
+                        counts = TRUE, log = FALSE)
+
+save(tfl_News_4G, file = trainingNewsModelFile_4G)
+
+# TWITTER
+
+tfl_Twitter_4G <- makeTFL(as.matrix(tdm_train_4G), N = 4, numDoc = 3, 
+                       counts = TRUE, log = FALSE)
+
+save(tfl_Twitter_4G, file = trainingTwitterModelFile_4G)
+
+## TOTAL
+aux4 <- as.matrix(tdm_train_4G)
+aux4 <- cbind(aux4, TOTAL = apply(aux4, 1, sum))
+
+tfl_Total_4G <- makeTFL(aux4, N = 4, numDoc = 4, 
+                          counts = TRUE, log = FALSE)
+
+rm(aux4)
+
+save(tfl_Total_4G, file = trainingTotalModelFile_4G)
+
+print(sprintf("%s - 6 - Build TFLs - END", date()))
+
+## 7 - Reemplace OOV words by <unk> ###########################################
+
+print(sprintf("%s - 7 - Reemplace OOV words by <unk>", date()))
+
+# BLOGS
+tfl_Blogs_4G <- changeWords4G(tfl_Blogs_4G, OOVdictionaryBlogs_1Ga)
+
+# NEWS
+tfl_News_4G <- changeWords4G(tfl_News_4G, OOVdictionaryNews_1Ga)
+
+# TWITTER
+tfl_Twitter_4G <- changeWords4G(tfl_Twitter_4G, OOVdictionaryTwitter_1Ga)
+
+# TOTAL
+tfl_Total_4G <- changeWords4G(tfl_Total_4G, OOVdictionaryTotal_1Ga)
+
+print(sprintf("%s - 7 - Reemplace OOV words by <unk> - END", date()))
+
+
+## 8 - SAVE MODELS ############################################################
+
+print(sprintf("%s - 8 - SAVE MODELS - ", date()))
+
+save(tfl_Blogs_4G,     file = m.BlogsFile)
+save(tfl_News_4G,      file = m.NewsFile)
+save(tfl_Twitter_4G,   file = m.TwitterFile)
+save(tfl_Total_4G,     file = m.TotalFile)
+
+print(sprintf("%s - 8 - SAVE MODELS - END", date()))
+
+
+## This was the last phase of the process creating models. They are nothing else
+# than TFLs (data tables with a term and its count in each row).
+# From now on we'll test our ability to extract 1, 2 and 3-grams TFLs from 
+# them, and add the necessary frequencies and log frequencies columns.
+
+## 9 - Create TFLs for 1,2 ang 3-grams ########################################
+
+print(sprintf("%s - 9 - Create TFLs for 1,2 ang 3-grams - ", date()))
+
+## BLOGS
+tfl_Blogs_1G <- makeTFL1G(tfl_Blogs_4G)
+tfl_Blogs_2G <- makeTFL2G(tfl_Blogs_4G)
+tfl_Blogs_3G <- makeTFL3G(tfl_Blogs_4G)
+
+# NEWS
+tfl_News_1G <- makeTFL1G(tfl_News_4G)
+tfl_News_2G <- makeTFL2G(tfl_News_4G)
+tfl_News_3G <- makeTFL3G(tfl_News_4G)
+
+# TWITTER
+tfl_Twitter_1G <- makeTFL1G(tfl_Twitter_4G)
+tfl_Twitter_2G <- makeTFL2G(tfl_Twitter_4G)
+tfl_Twitter_3G <- makeTFL3G(tfl_Twitter_4G)
+
+# TOTAL
+tfl_Total_1G <- makeTFL1G(tfl_Total_4G)
+tfl_Total_2G <- makeTFL2G(tfl_Total_4G)
+tfl_Total_3G <- makeTFL3G(tfl_Total_4G)
+
+print(sprintf("%s - 9 - Create TFLs for 1,2 ang 3-grams - END", date()))
+
+## 10 - Add frequency and logprob columns ####################################
+
+print(sprintf("%s - 10 - Add frequency and logprob columns - ", date()))
+
+## BLOGS
+tfl_Blogs_1G <- addProbs1G(tfl_Blogs_1G)
+tfl_Blogs_2G <- addProbs2G(tfl_Blogs_2G)
+tfl_Blogs_3G <- addProbs3G(tfl_Blogs_3G)
+tfl_Blogs_4G <- addProbs4G(tfl_Blogs_4G)
+
+# NEWS
+tfl_News_1G <- addProbs1G(tfl_News_1G)
+tfl_News_2G <- addProbs2G(tfl_News_2G)
+tfl_News_3G <- addProbs3G(tfl_News_3G)
+tfl_News_4G <- addProbs4G(tfl_News_4G)
+
+# TWITTER
+tfl_Twitter_1G <- addProbs1G(tfl_Twitter_1G)
+tfl_Twitter_2G <- addProbs2G(tfl_Twitter_2G)
+tfl_Twitter_3G <- addProbs3G(tfl_Twitter_3G)
+tfl_Twitter_4G <- addProbs4G(tfl_Twitter_4G)
+
+# TOTAL
+tfl_Total_1G <- addProbs1G(tfl_Total_1G)
+tfl_Total_2G <- addProbs2G(tfl_Total_2G)
+tfl_Total_3G <- addProbs3G(tfl_Total_3G)
+tfl_Total_4G <- addProbs4G(tfl_Total_4G)
+
+print(sprintf("%s - 10 - Add frequency and logprob columns - END", date()))
+
+date()
+
+```
+
+makeTTSets.R
+
+```{r eval=FALSE}
+#'
+#' Function makeTTSets
+#' 
+#' This function takes a text file and creates two random and disjoint 
+#' partitions: a training partition and a testing partition. Both are stored 
+#' in two file texts. 
+#' 
+#' @param inFile  string; text file to partition in a training and a test files
+#' @param outFileTraining string; were to put the training file
+#' @param outFileTraining string; were to put the testing file
+#' @param p       numeric (0-1); % to include in training file
+#' 
+makeTTSets <- function(inFile, outFileTraining, outFileTesting, p = 0.7) {
+  
+  conR <- file(inFile, open = "rb", encoding = "UTF-8")
+  lines <- readLines(conR, encoding = "UTF-8", skipNul = TRUE)
+  close(conR)
+  
+  nLines <- length(lines)
+  nSampledLines <- sample(seq(1, nLines, 1), round(p*nLines))
+  
+  conW <- file(outFileTraining, open = "w")
+  writeLines(lines[nSampledLines], con = conW, useBytes = TRUE)
+  close(conW)
+  
+  conW <- file(outFileTesting, open = "w")
+  writeLines(lines[-nSampledLines], con = conW, useBytes = TRUE)
+  close(conW)
+}
+```
+
+sampleFiles.R
+
+```{r eval = FALSE}
+#' Function sampleFiles()
+#' 
+#' This function samples files in list "inFiles" to a single file. 
+#' 
+#' @param inFiles string vector; names of files to sample
+#' @param outFile string; name of the output sampled file
+#' @param p       numeric; % (0 -1) of lines to be sampled in each file
+#' @param encoding string; encoding to use reading the files
+#' @param open     string; open file mode
+#' 
+sampleFiles <- function(inFiles, outFile, p, 
+                       encoding = "UTF-8", open = "rb", ...){
+  
+  chunk_size <- 1000
+  
+  if (file.exists(outFile)) {
+    unlink(outFile)
+  }
+  
+  conW <- file(outFile, open = "at")
+  
+  set.seed(4675)
+  
+  for (infile in inFiles) {
+    conR <- file(infile, open = open, encoding = encoding)
+    
+    while ((k <- length(lines <- readLines(con = conR, n = chunk_size,
+                                           encoding = encoding,
+                                           ...))) == chunk_size) {
+      
+      sampled_lines <- sample(c(1:k), size = round(p*length(lines)))
+      
+      writeLines(lines[sampled_lines], con = conW, useBytes = TRUE)
+      
+    }
+    
+    close(conR)
+  }
+  
+  close(conW)
+  
+}
+```
+
+managePunct.R
+
+```{r eval = FALSE}
+#' Function managePunct()
+#' 
+#'  This function preprocesses the text in order to get the punctuation as 
+#'  we want.
+#'  
+#'  @param s text string to process
+#'  @return processed text string
+#'  @details
+#'  See code comments
+
+managePunct <- function(s) {
+  
+  # Locate emoticons - for now, just managing 10 types of emoticons
+  s <- gsub("[=]?:-?\\)+|\\(-?:[=]?", "EMTKN-A", s)
+  s <- gsub("[>=]?;-?\\)+|\\(-?;[<=]?", "EMTKN-B", s)
+  s <- gsub("[>\\}]?:-?[\\)>]+|[\\(<]-?:[<\\{}]?", "EMTKN-C", s)
+  s <- gsub("[=]?[:xX]-?[D]+", "EMTKN-D", s)
+  s <- gsub("[=]?:-?\\(+|\\)-?:[=]?", "EMTKN-E", s)
+  s <- gsub("[=]?:-?[/\\\\]+|[\\\\/]-?:[=]?", "EMTKN-F", s)
+  s <- gsub("[=]?:-?[oO]+|[oO]-?:[=]?", "EMTKN-G", s)
+  s <- gsub("[=]?:-?[\\|]+|[\\|]-?:[=]?", "EMTKN-H", s)
+  s <- gsub("[=]?:[-\\*]?[xX\\)\\*]+|[xX\\(\\*][-\\*]?:[=]?", "EMTKN-I", s)
+  s <- gsub("[=]?:[-]?[@]+|[@][-]?:[=]?", "EMTKN-J", s)
+  
+  # Substitue numbers by '-unk-' to avoid problems with '-'
+  s <- gsub("[[:digit:]]+", "-kkk-", s)
+  # Remove all '-' not joining two words
+  s <- gsub("([[:alnum:]+])(-+)([[:alnum:]+])", "\\1TGT\\3", s)
+  s <- gsub("-", "", s)
+  s <- gsub("TGT", "-", s)
+  # Remove '.' not joining two words
+  s <- gsub("([[:alnum:]+])(\\.)([[:alnum:]+])", "\\1TGT\\3", s)
+  s <- gsub("\\.", "", s)
+  s <- gsub("TGT", ".", s)
+  # Remove ''' not joining two words or not at the end of a word
+  s <- gsub("([[:alnum:]+])(')([[:alnum:]+])", "\\1TGT\\3", s)
+  s <- gsub("([[:alnum:]+])(')", "\\1TGT", s)
+  s <- gsub("'", "", s)
+  s <- gsub("TGT", "'", s)
+  # Remove '@' not joining two words or not at the beginning of a word
+  s <- gsub("([[:alnum:]*])(@)([[:alnum:]+])", "\\1TGT\\3", s)
+  s <- gsub("(@)([[:alnum:]+])", "TGT\\2", s)
+  s <- gsub("@", "", s)
+  s <- gsub("TGT", "@", s)
+  # Remove '#' not at the beginning of a word
+  s <- gsub("([[:space:]]#)([[:alnum:]+])", "TGT\\2", s)
+  s <- gsub("#", " ", s)
+  s <- gsub("TGT", " #", s)
+  # Remove '_' not joining two words
+  s <- gsub("([[:alnum:]+])(_+)([[:alnum:]+])", "\\1TGT\\3", s)
+  s <- gsub("_", "", s)
+  s <- gsub("TGT", "_", s)
+  # &, %, !, <, =, >, ?: leave just one and separated
+  s <- gsub("&+", " & ", s)
+  s <- gsub("%+", " % ", s)
+  s <- gsub("!+", " ! ", s)
+  s <- gsub("<+", " < ", s)
+  s <- gsub("=+", " = ", s)
+  s <- gsub(">+", " > ", s)
+  s <- gsub("\\?+", " ? ", s)
+  
+  # Remove all other punctuation
+  regx_punct <- '‘|\\"|\\$|\\(|\\)|\\*|\\+|,|/|:\\;|\\[|\\\\|\\]|\\^|`|\\{|\\||\\}|~|’'
+  s <- gsub(regx_punct, "", s)
+  
+  # Remove non printable characters
+  s <- gsub("[^[:print:]]", " ", s)
+  
+  # Recover emoticons
+  s <- gsub("EMTKN-A", " :-) ", s)
+  s <- gsub("EMTKN-B", " ;-) ", s)
+  s <- gsub("EMTKN-C", " >:-) ", s)
+  s <- gsub("EMTKN-D", " :-D ", s)
+  s <- gsub("EMTKN-E", " :-( ", s)
+  s <- gsub("EMTKN-F", " :-/ ", s)
+  s <- gsub("EMTKN-G", " :-o ", s)
+  s <- gsub("EMTKN-H", " :-| ", s)
+  s <- gsub("EMTKN-I", " :-x ", s)
+  s <- gsub("EMTKN-J", " :-@ ", s)
+  
+  # Clean numbers
+  s <- gsub("-*kkk-*", "<num>", s)
+  
+  # Identify hashtags
+  s <- gsub("(^| )+#\\S+", " <hashtag> ", s)
+  
+  # Identify twitter users
+  s <- gsub("(^| )+@\\S+", " <twitter_user> ", s)
+  
+  # Identify email addresses
+  s <- gsub("[[:alnum:]]+@[[:alnum:]]+\\.[[:alnum:]]+", "<email>", s)
+  
+  s
+}
+```
+
+calcCoverage() in statsNWordGrams.R
+
+```{r eval = FALSE}
+#' 
+#' @name calcCoverage(tdm, inFile = "TOTAL", tgtCoverage = 0.95)
+#' 
+#' @param tdm tm Term Document Matrix to process
+#' @param inFile integer (1-4) or string; which document process in TDM
+#' @param tgtCoverage numeric (0-1); target % of coverage to achieve
+#' 
+#' @return a list with 4 elements:
+#'  - nTokens: list with:
+#'                        - nTokens: total number of tokens in doc
+#'                        - nVTokens: number of tokens in doc Vocabulary
+#'                        - nOOVTokens: number of tokens out of doc Vocabulary
+#'  - nTerms: list with:
+#'                        - nTerms: total number of terms in doc
+#'                        - nVTerms: number of Vocabulary terms in doc
+#'                        - nOOVTerms: number of Out Of Vocabulary terms in doc
+#'  - listTerms: list with:
+#'                        - VTerms: vector of Vocabulary Terms
+#'                        - OOVTerms: vector of OOV terms
+#'  - percents: list with:
+#'                        - percentFreqTerms: % of vocabulary terms over total
+#'                        terms
+#'                        - percentFreqTermsCoverage: % coverage of total tokens
+#'                        by vocabulary most frequent terms
+#' 
+#' @description This function takes document 'inFile' in TDM 'tdm' and 
+#' determines the most frquecy terms terms needed to cover % 'tgtCoverage' of 
+#' tokens in doc.
+#' 
+calcCoverage <- function(tdm, inFile = "TOTAL", tgtCoverage = 0.95) {
+  
+  # Better work with a matrix
+  m_tdm <- as.matrix(tdm)
+  
+  # Select doc in TDM; if "TOTAL", we need to calculate it
+  if (inFile == "TOTAL" | inFile == 4) 
+    m_tdm <- cbind(m_tdm, TOTAL = apply(m_tdm,1,sum))
+  else 
+    m_tdm <- m_tdm[m_tdm[ , inFile] > 0, ]
+  
+  # Order terms by decreasin frequency
+  v_tdm <- m_tdm[order(m_tdm[, inFile], decreasing = TRUE), inFile]
+  
+  # We'll calculate the cutoff (minimum most frequent terms needed to cover 
+  # %'tgtCoverage' of total tokens) adapting binary search algorithm
+  
+  sup <- length(v_tdm)
+  inf <- 1
+  
+  tgt <- tgtCoverage * sum(v_tdm)
+  print(tgt)
+  
+  while (inf <= sup) {
+    
+    center <- floor((sup + inf) / 2)
+    writeLines(sprintf("inf: %d center: % d - sup: %d", inf, center, sup))    
+    sumCount <- sum(v_tdm[1:center])
+    
+    if (sumCount > tgt & sumCount - v_tdm[center-1] > tgt) {
+      sup <- center - 1
+    }
+    else {
+      inf <- center + 1
+    }
+  }
+  
+  # Once the cutoff is decided, just calculate results to return
+  
+  nTotalTokens = sum(v_tdm)
+  nVTokens = sum(v_tdm[1:center])
+  nOOVTokens = nTotalTokens - nVTokens
+  nTokens <- list(nTotalTokens = nTotalTokens, nVTokens = nVTokens, 
+                  nOOVTokens = nOOVTokens) 
+  
+  nTotalTerms = length(v_tdm)
+  nVTerms = center
+  nOOVTerms = nTotalTerms - center 
+  nTerms <- list(nTotalTerms = nTotalTerms, nVTerms = nVTerms, 
+                 nOOVTerms = nOOVTerms)
+  
+  VTerms = names(v_tdm[1:center])
+  OOVTerms = names(v_tdm[(center+1):nTotalTerms])
+  listTerms <- list(VTerms = VTerms, OOVTerms = OOVTerms)
+  
+  percentFreqTermsCoverage = nVTokens / nTotalTokens
+  percentFreqTerms <- nVTerms / nTotalTerms
+  percents <- list (percentFreqTerms = percentFreqTerms, 
+                    percentFreqTermsCoverage = percentFreqTermsCoverage)
+  
+  res <- list(nTokens = nTokens, nTerms = nTerms, listTerms = listTerms, 
+              percents = percents)
+    
+  return(res)
+}
+```
+
+makeTFL() in makeTFLs.R
+
+```{r eval = FALSE}
+library(tm)
+library(data.table)
+
+#'
+#' MODULE makeTFLs
+#' 
+
+#' 
+#' FUNCTION makeTFl(tdm, N, numDoc, log = TRUE)
+#' 
+#' This function gets a Term-Document Matrix and buids a data table:
+#'  - Terms are separated in N columns
+#'  - Counts are transformed into probabilities or log-probailities
+#'  
+#'  @param tdm as.matrix(TermDocumentMatrix) ; TDM to be processed
+#'  @param N integer; indicates de kind of N-grams contained in the terms of tdm
+#'  @param numDoc integer; num column of document in tdm to process
+#'  @param Counts logical; if TRUE, use counts; if FALSE, use probs or log-probs
+#'  @param log logical; use or not log-probailities when Counts == FALSE
+#'  
+#'  @return processed tdm as data table
+#'  
+#'  @include library(tm), library(data.table)
+#'  
+#'  @usage tfl <- makeTFL(m_tdm = as.matrix(tdm)), N = 3, numDoc = 1, log = FALSE)
+#'  
+
+makeTFL <- function(m_tdm, N, numDoc, counts = FALSE, log = FALSE) {
+  
+  # Easier working with a datatable 
+  df_tdm <- data.table(Wordgram = row.names(m_tdm), Freq = m_tdm[, numDoc])
+
+  # Split N-wordram into single types
+  aux <- sapply(as.character(df_tdm$Wordgram), strsplit, split = " ")
+  
+  # Check which N-grams are complete
+  is.full <- function(l) function(x) {
+    
+    blank <- TRUE
+    length_x <- length(x)
+    for (i in 1:length_x)
+      blank <- blank & (x[i] != "")
+    
+    return((length(x) == l) & blank)
+  }
+
+  # Build TFL columns only with complete N-grams
+  full <- sapply(aux, is.full(N))
+
+  m_cols <- NULL
+  
+  for (i in 1:N)
+    m_cols <- cbind(m_cols, sapply(aux[full], function(x) x[i]))
+  m_cols <- cbind(m_cols, df_tdm[full,]$Freq)
+
+  # Build TFL
+  unified_levels <- unique(as.vector(m_cols[, 1:N]))
+  
+  df_NG <- as.data.frame(m_cols, stringsAsFactors = FALSE)
+
+  for(i in 1:N) {
+    df_NG[ , i] <- data.frame(factor(df_NG[ , i], levels = unified_levels))
+    names(df_NG)[i] <- paste0("WG", i)
+  }
+  df_NG[, N+1] <- as.numeric(df_NG[, N+1])
+  df_NG <- df_NG[df_NG[,N+1] > 0,]
+  
+  # Set column names
+  if (counts == TRUE) {
+    if (log == FALSE)
+      names(df_NG)[N+1] <- "Count"
+    else {
+      names(df_NG)[N+1] <- "log10Count"
+      df_NG[, N+1] <- log10(df_NG[, N+1])
+    }
+  }
+  else {
+    sumCol <- sum(df_NG[, N+1])
+    if (log == FALSE) {
+      names(df_NG)[N+1] <- "Freq"
+      df_NG[, N+1] <- df_NG[, N+1] / sumCol
+    }
+    else {
+      names(df_NG)[N+1] <- "log10Freq"
+      df_NG[, N+1] <- log10(df_NG[, N+1] / sumCol)
+    }
+  }
+                  
+  as.data.table(df_NG )
+}
+```
+
+With data.tables changing OOV terms by `<unk>` is really efficient:
+
+```{r eval =FALSE}
+changeWords4G <- function(tfl_4G, dictionary, subst = "<unk>") {
+  
+  t4G <- tfl_4G
+  
+  setkey(t4G, WG4)
+  t4G[.(dictionary)]$WG4 <- subst
+  setkey(t4G, WG3)
+  t4G[.(dictionary)]$WG3 <- subst
+  setkey(t4G, WG2)
+  t4G[.(dictionary)]$WG2 <- subst
+  setkey(t4G, WG1)
+  t4G[.(dictionary)]$WG1 <- subst
+  setkey(t4G, WG1, WG2, WG3, WG4)
+  t4G <- t4G[, sum(Count), by=key(t4G)]
+  setnames(t4G, "V1", "Count")
+  
+  return(t4G)
+}
+
+changeWords3G <- function(tfl_3G, dictionary, subst = "<unk>") {
+  
+  t3G <- tfl_3G
+  
+  setkey(t3G, WG3)
+  t3G[.(dictionary)]$WG3 <- subst
+  setkey(t3G, WG2)
+  t3G[.(dictionary)]$WG2 <- subst
+  setkey(t3G, WG1)
+  t3G[.(dictionary)]$WG1 <- subst
+  setkey(t3G, WG1, WG2, WG3)
+  t3G <- t3G[, sum(Count), by=key(t3G)]
+  setnames(t4G, "V1", "Count")
+  
+  return(t3G)
+}
+
+changeWords2G <- function(tfl_2G, dictionary, subst = "<unk>") {
+  
+  t2G <- tfl_2G
+  
+  setkey(t2G, WG2)
+  t2G[.(dictionary)]$WG2 <- subst
+  setkey(t2G, WG1)
+  t2G[.(dictionary)]$WG1 <- subst
+  setkey(t2G, WG1, WG2)
+  t2G <- t2G[, sum(Count), by=key(t2G)]
+  setnames(t2G, "V1", "Count")
+  
+  return(t2G)
+}
+
+changeWords1G <- function(tfl_1G, dictionary, subst = "<unk>") {
+  
+  t1G <- tfl_1G
+  
+  setkey(t1G, WG1)
+  t1G[.(dictionary)]$WG1 <- subst
+  setkey(t1G, WG1)
+  t1G <- t1G[, sum(Count), by=key(t1G)]
+  setnames(t1G, "V1", "Count")
+  
+  return(t1G)
+}
+```
+
+And extract 1,2 and 3-grams TFLs from 4-grams TFL:
+
+```{r eval= FALSE}
+#'
+#' @name makeTFL1G(tfl_4G)
+#' 
+
+makeTFL1G <- function(tfl_4G) {
+  tfl_1G <- tfl_4G[, sum(Count), by=WG4]
+  setkey(tfl_1G, WG4)
+  tfl_1G <- tfl_1G[!.("<etx>")]
+  setnames(tfl_1G, c("WG4","V1"), c("WG1", "Count"))
+  return(tfl_1G)
+}
+
+#'
+#' @name makeTFL2G(tfl_4G)
+#' 
+
+makeTFL2G <- function(tfl_4G) {
+  tfl_2G <- tfl_4G[, sum(Count), by=.(WG3, WG4)]
+  setkey(tfl_2G, WG3, WG4)
+  tfl_2G <- tfl_2G[!.("<etx>","<etx>")]
+  setnames(tfl_2G, c("WG3","WG4","V1"), c("WG1", "WG2", "Count"))
+  return(tfl_2G)
+}
+
+#'
+#' @name makeTFL3G(tfl_4G)
+#' 
+
+makeTFL3G <- function(tfl_4G) {
+  tfl_3G <- tfl_4G[, sum(Count), by=.(WG2, WG3, WG4)]
+  setkey(tfl_3G, WG2, WG3, WG4)
+  tfl_3G <- tfl_3G[!.("<etx>","<etx>", "<etx>")]
+  setnames(tfl_3G, c("WG2", "WG3","WG4","V1"), c("WG1", "WG2", "WG3", "Count"))
+  return(tfl_3G)
+}
+
+```
+
+And add Probs columns:
+
+```{r eval = FALSE}
+#' 
+#' @name addProbs4G(tfl_4G)
+#' 
+
+addProbs4G <- function(tfl_4G) {
+  
+  t4G <- tfl_4G
+  setkey(t4G, WG1, WG2, WG3)
+  t4G$Freq <- t4G[t4G[,sum(Count), by=key(t4G)]][, Count/V1]
+  t4G$logProb <- log2(t4G$Freq)
+  
+  return(t4G)
+}
+
+addProbs3G <- function(tfl_3G) {
+  
+  t3G <- tfl_3G
+  setkey(t3G, WG1, WG2)
+  t3G$Freq <- t3G[t3G[,sum(Count), by=key(t3G)]][, Count/V1]
+  t3G$logProb <- log2(t3G$Freq)
+  
+  return(t3G)
+}
+
+addProbs2G <- function(tfl_2G) {
+  
+  t2G <- tfl_2G
+  setkey(t2G, WG1)
+  t2G$Freq <- t2G[t2G[,sum(Count), by=key(t2G)]][, Count/V1]
+  t2G$logProb <- log2(t2G$Freq)
+  
+  return(t2G)
+}
+
+addProbs1G <- function(tfl_1G) {
+  
+  t1G <- tfl_1G
+  setkey(t1G, WG1)
+  tot <- t1G[,sum(Count)]
+  t1G$Freq <- t1G$Count / tot
+  t1G$logProb <- log2(t1G$Freq)
+  
+  return(t1G)
+}
+```
+

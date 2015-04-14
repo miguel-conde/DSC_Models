@@ -233,15 +233,14 @@ resTotal
 #                               resTotal$conf.int[2],   resTotalFS$conf.int[2]))
 
 tbl_res_inter <- 
-  data.frame(Model = c("Blogs", "Blogs", "News", "News", 
-                       "Twitter", "Twitter", "Total", "Total"),
-             Final.Sample = c(FALSE, TRUE, FALSE, TRUE, FALSE, TRUE, FALSE, TRUE),
+  data.frame(Model = c("Blogs",  "News", "Twitter", "Total"),
+             Final.Sample = c(FALSE, FALSE, FALSE,FALSE),
              Inf.Conf.Int = c(resBlogs$conf.int[1],   resNews$conf.int[1],
                               resTwitter$conf.int[1], resTotal$conf.int[1]),
              Mean = c(resBlogs$estimate,   resNews$estimate,   
                       resTwitter$estimate, resTotal$estimate), 
              Sup.Conf.Int = c(resBlogs$conf.int[2],   resNews$conf.int[2],    
-                              resTwitter$conf.int[2], resTotal$conf.int[2])
+                              resTwitter$conf.int[2], resTotal$conf.int[2]))
 
 tbl_res_inter
 
@@ -249,15 +248,9 @@ tbl_res_inter
 
 t.test(tbl_res_inter$Mean)
 
-t.test(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Mean)
-
-t.test(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Mean)
-
 plot(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Mean, type="o", ylim = c(0.08,0.30), col = "blue")
 lines(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Inf.Conf.Int, type="l", col = "blue")
 lines(tbl_res_inter[tbl_res_inter$Final.Sample == FALSE,]$Sup.Conf.Int, type="l", col = "blue")
-lines(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Mean, type="o", col = "red")
-lines(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Inf.Conf.Int, type="l", col = "red")
-lines(tbl_res_inter[tbl_res_inter$Final.Sample == TRUE,]$Sup.Conf.Int, type="l", col = "red")
+
 
 date()

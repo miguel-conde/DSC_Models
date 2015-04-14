@@ -127,15 +127,52 @@ statsCorpus <- function(tdm, v_count = c(50,50,50,50)) {
   statsNWordGrams(tdm, count = v_count[4])
 }
 
+
+#' 
+#' @name calcCoverage(tdm, inFile = "TOTAL", tgtCoverage = 0.95)
+#' 
+#' @param tdm tm Term Document Matrix to process
+#' @param inFile integer (1-4) or string; which document process in TDM
+#' @param tgtCoverage numeric (0-1); target % of coverage to achieve
+#' 
+#' @return a list with 4 elements:
+#'  - nTokens: list with:
+#'                        - nTokens: total number of tokens in doc
+#'                        - nVTokens: number of tokens in doc Vocabulary
+#'                        - nOOVTokens: number of tokens out of doc Vocabulary
+#'  - nTerms: list with:
+#'                        - nTerms: total number of terms in doc
+#'                        - nVTerms: number of Vocabulary terms in doc
+#'                        - nOOVTerms: number of Out Of Vocabulary terms in doc
+#'  - listTerms: list with:
+#'                        - VTerms: vector of Vocabulary Terms
+#'                        - OOVTerms: vector of OOV terms
+#'  - percents: list with:
+#'                        - percentFreqTerms: % of vocabulary terms over total
+#'                        terms
+#'                        - percentFreqTermsCoverage: % coverage of total tokens
+#'                        by vocabulary most frequent terms
+#' 
+#' @description This function takes document 'inFile' in TDM 'tdm' and 
+#' determines the most frquecy terms terms needed to cover % 'tgtCoverage' of 
+#' tokens in doc.
+#' 
 calcCoverage <- function(tdm, inFile = "TOTAL", tgtCoverage = 0.95) {
+  
+  # Better work with a matrix
   m_tdm <- as.matrix(tdm)
   
+  # Select doc in TDM; if "TOTAL", we need to calculate it
   if (inFile == "TOTAL" | inFile == 4) 
     m_tdm <- cbind(m_tdm, TOTAL = apply(m_tdm,1,sum))
   else 
     m_tdm <- m_tdm[m_tdm[ , inFile] > 0, ]
   
+  # Order terms by decreasin frequency
   v_tdm <- m_tdm[order(m_tdm[, inFile], decreasing = TRUE), inFile]
+  
+  # We'll calculate the cutoff (minimum most frequent terms needed to cover 
+  # %'tgtCoverage' of total tokens) adapting binary search algorithm
   
   sup <- length(v_tdm)
   inf <- 1
@@ -159,6 +196,8 @@ calcCoverage <- function(tdm, inFile = "TOTAL", tgtCoverage = 0.95) {
   
   print(sprintf("sumcum: %d - percent: %f", 
                 sum(v_tdm[1:center]), sum(v_tdm[1:center])/sum(v_tdm)))
+  
+  # Once the cutoff is decided, just calculate results to return
   
   nTotalTokens = sum(v_tdm)
   nVTokens = sum(v_tdm[1:center])

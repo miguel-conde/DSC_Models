@@ -1,3 +1,15 @@
+#' 
+#' SCRIPT trainModel.R
+#' 
+#' This script is used to obtain four models (Blogs, News, Twitter and Total)
+#' sampling the training sets. 
+#' 
+#' Each model is just a 4-gram Term Frequency List (TFL, each row containing
+#' a term and its counts). From these models we can quickly obtain later 
+#' 1, 2 and 3-grams TFLs, and add frquency and log frequency columns. 
+#' In this way we save a lot of space (thinking in uploading models to Shiny)
+#' 
+
 source("./R/dfNames.R")
 source("./R/makeTTSets.R")
 source("./R/sampleFiles.R")
@@ -10,7 +22,7 @@ library(tm)
 library(RWeka)
 library(data.table)
 
-
+## Function to create, if necessary, the directories to use
 create_dir <- function(newDir)
 if (!file.exists(newDir)) {
   dir.create(newDir)
@@ -18,14 +30,19 @@ if (!file.exists(newDir)) {
 
 
 ## 1 - Make training and testing sets ######################################
+
+print(sprintf("%s - 1 - Make training and testing sets - ", date()))
+
 create_dir(setsDirectory)
 create_dir(trainDirectory)
 create_dir(testDirectory)
 
-
+# 80 % for teining sets, 20% for testing sets
 makeTTSets(blogsFile,   blogsTrainingFile,   blogsTestingFile,   p = 0.8)
 makeTTSets(newsFile,    newsTrainingFile,    newsTestingFile,    p = 0.8)
 makeTTSets(twitterFile, twitterTrainingFile, twitterTestingFile, p = 0.8)
+
+print(sprintf("%s - 1 - Make training and testing sets - END ", date()))
 
 ## 2 - Sample files 1-G ####################################################
 
@@ -35,6 +52,8 @@ create_dir(modelDirectory)
 create_dir(samplesDirectory)
 create_dir(samplesTrainDirectory)
 create_dir(samplesTestDirectory)
+
+# % of lines to sample in each training file
 
 # p_blogs   <- 2*0.4/100
 # p_news    <- 2*0.4/100
@@ -55,6 +74,7 @@ p_twitter <- 5*1.7/100
 # p_news    <- 1.5/1000
 # p_twitter <- 1.7/1000
 
+# Get sampled files for training files
 sampleFiles(blogsTrainingFile,   blogsSampleTrainFile_1G,   p = p_blogs)
 sampleFiles(newsTrainingFile,    newsSampleTrainFile_1G,    p = p_news)
 sampleFiles(twitterTrainingFile, twitterSampleTrainFile_1G, p = p_twitter)
@@ -62,6 +82,9 @@ sampleFiles(twitterTrainingFile, twitterSampleTrainFile_1G, p = p_twitter)
 print(sprintf("%s - 2 - Sample files 1-G - END", date()))
 
 ## 3 - Corpus and TDM for 1G ###############################################
+
+# Now we'll build a unigram Term-Document MAtrix (TDM) from our three sampled
+# files (Corpus)
 
 print(sprintf("%s - 3 - Corpus and TDM for 1G", date()))
 
@@ -77,7 +100,7 @@ makeNWordgrams <- function (x, N = 3)
                                  delimiters = ' \r\n\t"'))
 make1Wordgrams <- function(x) makeNWordgrams(x, 1)
 
-# Create first 1gram corpus
+# Create first 1gram Corpus
 (train_en_US_1Ga <- VCorpus(DirSource(samplesTrainDirectory, encoding = "UTF-8"),
                   readerControl = list(language = "en")))
 
@@ -101,9 +124,15 @@ save(train_tdm_1Ga, file = trainTdmFile_1Ga)
 
 print(sprintf("%s - 3 - Corpus and TDM for 1G - END", date()))
 
-## Extract 95% coverage OOV dictionaries ##############################################
+## 4 - Extract 95% coverage OOV dictionaries ##################################
 
-print(sprintf("%s - Extract OOV dictionaries", date()))
+print(sprintf("%s - 4 -  Extract OOV dictionaries", date()))
+
+## Here we decide which terms we're going to consider as Out Of Vocabulary (OOV).
+# We'll keep the most frequent terms, i.e., those necessary to cover 95% of the
+# tokens in Corpus. We'll save OOV words into dictionaries, to further substitute
+# them by "<unk>".
+
 
 ## BLOGS
 res <- calcCoverage(train_tdm_1Ga, 1)
@@ -123,12 +152,15 @@ OOVdictionaryTotal_1Ga <- res$listTerms$OOVTerms
 
 rm(res)
 
-print(sprintf("%s - Extract OOV dictionaries - END", date()))
+print(sprintf("%s - 4 - Extract OOV dictionaries - END", date()))
 
-## Create and save N-GRAMS TDMs #############################################
+## 5 - Create and save 4-GRAMS TDM ###########################################
 
-print(sprintf("%s - Create and save N-GRAMS TDMs", date()))
+## In this section we build 4-grams TDMs for corpus
 
+print(sprintf("%s - 5 - Create and save 4-GRAMS TDM", date()))
+
+# 4- gram tokenizer
 # make2Wordgrams <- function(x) makeNWordgrams(x, 2)
 # make3Wordgrams <- function(x) makeNWordgrams(x, 3)
 make4Wordgrams <- function(x) makeNWordgrams(x, 4)
@@ -192,6 +224,8 @@ ctrl <- list(
   wordLengths = c(1, Inf),
   tokenizer = make4Wordgrams)
 
+## Necessary to normalize 4-grams identification. This function adds seudo-words
+# at the beginning and the end of each line in Corpus.
 addLimits <- content_transformer(function(x) {
   paste0("<STX> <STX> <STX> ", grep("^.*$", x, value = TRUE), 
          " <ETX> <ETX> <ETX>")
@@ -199,15 +233,19 @@ addLimits <- content_transformer(function(x) {
 
 corpus_en_US_train_4G <- tm_map(train_en_US_1Ga, addLimits)
 
+# Calc 4-gram TDM and save it.
 tdm_train_4G <- TermDocumentMatrix(corpus_en_US_train_4G, control = ctrl)
 
 save(tdm_train_4G, file = tdm_trainFile_4G)
 
-print(sprintf("%s - Create and save N-GRAMS TDMs - END", date()))
+print(sprintf("%s - 5 - Create and save 4-GRAMS TDM - END", date()))
 
-## Build TFLs #############################################################
+## 6 - Build TFLs #############################################################
 
-print(sprintf("%s - Build TFLs", date()))
+# Here we separate the 4-gram TDM into four Term Frequency Lists (TFLs), 
+# implemented as datatables.
+
+print(sprintf("%s - 6 - Build TFLs", date()))
 
 create_dir(modelsDirectory)
 create_dir(trainingModelsDirectory)
@@ -248,11 +286,11 @@ rm(aux4)
 
 save(tfl_Total_4G, file = trainingTotalModelFile_4G)
 
-print(sprintf("%s - Build TFLs - END", date()))
+print(sprintf("%s - 6 - Build TFLs - END", date()))
 
-## Reemplace OOV words by <unk> #########################################
+## 7 - Reemplace OOV words by <unk> ###########################################
 
-print(sprintf("%s - Reemplace OOV words by <unk>", date()))
+print(sprintf("%s - 7 - Reemplace OOV words by <unk>", date()))
 
 # BLOGS
 tfl_Blogs_4G <- changeWords4G(tfl_Blogs_4G, OOVdictionaryBlogs_1Ga)
@@ -266,12 +304,12 @@ tfl_Twitter_4G <- changeWords4G(tfl_Twitter_4G, OOVdictionaryTwitter_1Ga)
 # TOTAL
 tfl_Total_4G <- changeWords4G(tfl_Total_4G, OOVdictionaryTotal_1Ga)
 
-print(sprintf("%s - Reemplace OOV words by <unk> - END", date()))
+print(sprintf("%s - 7 - Reemplace OOV words by <unk> - END", date()))
 
-## Reemplace profanity ##################################################
+## Reemplace profanity ########################################################
 
 # TO DO #
-
+# Best do it with a last minute strategy
 
 ## BLOGS
 
@@ -281,20 +319,26 @@ print(sprintf("%s - Reemplace OOV words by <unk> - END", date()))
 
 # TOTAL
 
-## SAVE MODELS ##########################################################
+## 8 - SAVE MODELS ############################################################
 
-print(sprintf("%s - SAVE MODELS - ", date()))
+print(sprintf("%s - 8 - SAVE MODELS - ", date()))
 
 save(tfl_Blogs_4G,     file = m.BlogsFile)
 save(tfl_News_4G,      file = m.NewsFile)
 save(tfl_Twitter_4G,   file = m.TwitterFile)
 save(tfl_Total_4G,     file = m.TotalFile)
 
-print(sprintf("%s - SAVE MODELS - END", date()))
+print(sprintf("%s - 8 - SAVE MODELS - END", date()))
 
-## Create TFLs for 1,2 ang 3-grams ######################################
 
-print(sprintf("%s - Create TFLs for 1,2 ang 3-grams - ", date()))
+## This was the last phase of the process creating models. They are nothing else
+# than TFLs (data tables with a term and its count in each row).
+# From now on we'll test our ability to extract 1, 2 and 3-grams TFLs from 
+# them, and add the necessary frequencies and log frequencies columns.
+
+## 9 - Create TFLs for 1,2 ang 3-grams ########################################
+
+print(sprintf("%s - 9 - Create TFLs for 1,2 ang 3-grams - ", date()))
 
 ## BLOGS
 tfl_Blogs_1G <- makeTFL1G(tfl_Blogs_4G)
@@ -316,11 +360,11 @@ tfl_Total_1G <- makeTFL1G(tfl_Total_4G)
 tfl_Total_2G <- makeTFL2G(tfl_Total_4G)
 tfl_Total_3G <- makeTFL3G(tfl_Total_4G)
 
-print(sprintf("%s - Create TFLs for 1,2 ang 3-grams - END", date()))
+print(sprintf("%s - 9 - Create TFLs for 1,2 ang 3-grams - END", date()))
 
-## Add frequency and logprob columns ####################################
+## 10 - Add frequency and logprob columns ####################################
 
-print(sprintf("%s - Add frequency and logprob columns - ", date()))
+print(sprintf("%s - 10 - Add frequency and logprob columns - ", date()))
 
 ## BLOGS
 tfl_Blogs_1G <- addProbs1G(tfl_Blogs_1G)
@@ -346,7 +390,6 @@ tfl_Total_2G <- addProbs2G(tfl_Total_2G)
 tfl_Total_3G <- addProbs3G(tfl_Total_3G)
 tfl_Total_4G <- addProbs4G(tfl_Total_4G)
 
-print(sprintf("%s - Add frequency and logprob columns - END", date()))
-
+print(sprintf("%s - 10 - Add frequency and logprob columns - END", date()))
 
 date()

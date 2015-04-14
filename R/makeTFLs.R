@@ -27,13 +27,13 @@ library(data.table)
 
 makeTFL <- function(m_tdm, N, numDoc, counts = FALSE, log = FALSE) {
   
-  # Easier working with a dataframe - OJO lo cambio por data.table para probar
+  # Easier working with a datatable 
   df_tdm <- data.table(Wordgram = row.names(m_tdm), Freq = m_tdm[, numDoc])
 
   # Split N-wordram into single types
   aux <- sapply(as.character(df_tdm$Wordgram), strsplit, split = " ")
   
-  # Checks which N-grams are complete
+  # Check which N-grams are complete
   is.full <- function(l) function(x) {
     
     blank <- TRUE
@@ -65,6 +65,7 @@ makeTFL <- function(m_tdm, N, numDoc, counts = FALSE, log = FALSE) {
   df_NG[, N+1] <- as.numeric(df_NG[, N+1])
   df_NG <- df_NG[df_NG[,N+1] > 0,]
   
+  # Set column names
   if (counts == TRUE) {
     if (log == FALSE)
       names(df_NG)[N+1] <- "Count"
@@ -85,7 +86,6 @@ makeTFL <- function(m_tdm, N, numDoc, counts = FALSE, log = FALSE) {
     }
   }
                   
-  
   as.data.table(df_NG )
 }
 
