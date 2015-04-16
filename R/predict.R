@@ -99,7 +99,9 @@ loadModelTotal <- function() {
 #' @param Npredictions integer; number of word to predict
 #' @param fullRes logical; if TRUE, complete lines in TDM are returned; else, 
 #' only the predicted words are returned
-#' @param interpol logical; use or not interpolation algorithm
+#' @param interpol logical; use or not interpolation algorithm. If set as TRUE,
+#'  A GLOBAL VARIABLE `l` must be set as a numeric vector with the weigths to use
+#' when interpolating
 #' 
 #' @return a two elements list:
 #'                            - Main prediction

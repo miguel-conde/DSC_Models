@@ -717,7 +717,7 @@ makeTFL <- function(m_tdm, N, numDoc, counts = FALSE, log = FALSE) {
 }
 ```
 
-With data.tables changing OOV terms by `<unk>` is really efficient:
+With data.tables changing OOV terms by `<unk>` is really efficient (makeTFLs):
 
 ```{r eval =FALSE}
 changeWords4G <- function(tfl_4G, dictionary, subst = "<unk>") {

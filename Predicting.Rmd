@@ -321,7 +321,7 @@ phrase <- paste(words[1], words[2], words[3])
 set.seed(4321)
 for (i in 1:1000) {
   w <- predictNG_v2(model, words, 1, finalSample = FALSE, 
-                    fullRes=FALSE, interpol = FALSE)[[1]]
+                    fullRes=FALSE, interpol = TRUE)[[1]]
   words[1] <- words[2]
   words[2] <- words[1]
   words[3] <- w
